@@ -1,0 +1,33 @@
+[package]
+name = "diff-viewer"
+version = "0.1.0"
+description = "A fast text + semantic diff viewer"
+authors = ["you"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+# Tauri v2 keeps app logic in a lib so mobile targets can reuse it.
+name = "diff_viewer_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# libgit2 bindings; the git2 crate vendors libgit2 by default so no system dep.
+git2 = { version = "0.19", default-features = false }
+# base64 for transferring raw file bytes across the Tauri IPC boundary as JSON.
+base64 = "0.22"
+
+# Size-optimized release profile — keeps the binary small (plan requirement).
+[profile.release]
+opt-level = "z"     # optimize for size
+lto = true          # link-time optimization
+codegen-units = 1   # better optimization, slower compile
+strip = true        # strip symbols from the binary
+panic = "abort"     # no unwinding machinery
+incremental = false

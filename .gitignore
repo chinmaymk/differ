@@ -1,0 +1,20 @@
+# Node
+node_modules/
+dist/
+.vite/
+
+# Generated wasm assets (copied from node_modules at build time)
+public/wasm/
+
+# Rust / Tauri
+target/
+src-tauri/target/
+src-tauri/gen/
+
+# Editor / OS
+.DS_Store
+*.log
+
+# Test/screenshot artifacts (root only — keep src-tauri/icons/*.png)
+.playwright-mcp/
+/*.png
