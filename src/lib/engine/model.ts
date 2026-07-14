@@ -252,11 +252,24 @@ export interface DiffEntry extends ChangedFile {
   newBytes: Uint8Array | null;
 }
 
-/** A named revision to compare (a ref, or the working tree / index). */
+/** A named revision to compare (a ref, the working tree/index, or an empty
+ * baseline for a root commit). */
 export interface Revision {
-  kind: 'ref' | 'worktree' | 'index';
+  kind: 'ref' | 'worktree' | 'index' | 'empty';
   /** For kind 'ref': a commit-ish (sha, branch, tag, "HEAD"). */
   ref?: string;
+}
+
+/** A commit in the repository history. */
+export interface CommitInfo {
+  sha: string;
+  shortSha: string;
+  summary: string;
+  author: string;
+  /** Author time, Unix seconds. */
+  timestamp: number;
+  /** First-parent sha, or null for a root commit. */
+  parent: string | null;
 }
 
 /**
@@ -278,4 +291,6 @@ export interface DiffSource {
     head: Revision,
     file: ChangedFile,
   ): Promise<DiffEntry>;
+  /** List recent commits, if the source is backed by history (git). */
+  listCommits?(limit: number): Promise<CommitInfo[]>;
 }

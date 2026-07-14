@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.5.0",
+    "@tauri-apps/plugin-dialog": "^2.7.1",
     "@vscode/tree-sitter-wasm": "^0.3.1",
     "fast-myers-diff": "^3.2.0"
   },

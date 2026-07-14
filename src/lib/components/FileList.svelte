@@ -65,6 +65,8 @@
     background: var(--bg-subtle);
     display: flex;
     flex-direction: column;
+    flex: 1;
+    min-height: 0;
   }
   .head {
     padding: 8px 12px;

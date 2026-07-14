@@ -24,6 +24,20 @@ pub struct RepoInfo {
     is_dirty: bool,
 }
 
+/// A commit in the repository's history (mirrors the TS `CommitInfo`).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitInfo {
+    sha: String,
+    short_sha: String,
+    summary: String,
+    author: String,
+    /// Author time, Unix seconds.
+    timestamp: i64,
+    /// First-parent sha, or null for a root commit.
+    parent: Option<String>,
+}
+
 /// Changed-file metadata (mirrors the TS `ChangedFile`).
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -81,6 +95,10 @@ fn empty_tree(repo: &Repository) -> Result<Tree<'_>, String> {
 /// Resolve a `kind: "ref"` revision to its tree. When the ref can't be resolved
 /// only because HEAD is unborn (no commits), fall back to the empty tree.
 fn rev_to_tree<'repo>(repo: &'repo Repository, rev: &Revision) -> Result<Tree<'repo>, String> {
+    // An explicit empty baseline (e.g. a root commit's "parent").
+    if rev.kind == "empty" {
+        return empty_tree(repo);
+    }
     let refstr = rev
         .r#ref
         .as_deref()
@@ -151,6 +169,34 @@ pub fn open_repo(path: String) -> Result<RepoInfo, String> {
         .is_empty();
 
     Ok(RepoInfo { head_ref, is_dirty })
+}
+
+#[tauri::command]
+pub fn list_commits(repo_path: String, limit: usize) -> Result<Vec<CommitInfo>, String> {
+    let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
+
+    let mut walk = repo.revwalk().map_err(|e| e.to_string())?;
+    // Unborn HEAD (no commits) → empty history, not an error.
+    if walk.push_head().is_err() {
+        return Ok(Vec::new());
+    }
+    walk.set_sorting(git2::Sort::TIME).map_err(|e| e.to_string())?;
+
+    let mut out = Vec::new();
+    for oid in walk.take(limit) {
+        let oid = oid.map_err(|e| e.to_string())?;
+        let commit = repo.find_commit(oid).map_err(|e| e.to_string())?;
+        let sha = oid.to_string();
+        out.push(CommitInfo {
+            short_sha: sha.chars().take(7).collect(),
+            sha,
+            summary: commit.summary().unwrap_or("").to_string(),
+            author: commit.author().name().unwrap_or("").to_string(),
+            timestamp: commit.time().seconds(),
+            parent: commit.parent_id(0).ok().map(|p| p.to_string()),
+        });
+    }
+    Ok(out)
 }
 
 #[tauri::command]
@@ -230,6 +276,8 @@ pub fn read_file(repo_path: String, rev: Revision, path: String) -> Result<FileC
 
     // `None` = the path does not exist on this side (added/removed).
     let data: Option<Vec<u8>> = match rev.kind.as_str() {
+        // Empty baseline: nothing exists on this side.
+        "empty" => None,
         "worktree" => {
             let workdir = repo.workdir().ok_or("repository has no working directory")?;
             match std::fs::read(workdir.join(&path)) {
@@ -323,6 +371,52 @@ mod tests {
     fn is_binary_detects_nul() {
         assert!(is_binary(b"abc\0def"));
         assert!(!is_binary(b"plain text"));
+    }
+
+    /// Two commits: verify history order/parent linkage and that a root commit
+    /// diffs against the empty tree (all files added).
+    #[test]
+    fn history_and_root_commit_diff() {
+        let dir = std::env::temp_dir().join(format!("diffview-hist-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.to_str().unwrap().to_string();
+        let repo = Repository::init(&dir).unwrap();
+        let sig = git2::Signature::now("t", "t@t").unwrap();
+
+        let commit_file = |name: &str, body: &[u8], msg: &str, parents: &[git2::Oid]| {
+            std::fs::write(dir.join(name), body).unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(Path::new(name)).unwrap();
+            index.write().unwrap();
+            let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+            let parent_commits: Vec<_> =
+                parents.iter().map(|p| repo.find_commit(*p).unwrap()).collect();
+            let refs: Vec<&git2::Commit> = parent_commits.iter().collect();
+            repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &refs).unwrap()
+        };
+
+        let c1 = commit_file("a.txt", b"one\n", "first", &[]);
+        commit_file("b.txt", b"two\n", "second", &[c1]);
+
+        let commits = list_commits(path.clone(), 10).unwrap();
+        assert_eq!(commits.len(), 2);
+        assert_eq!(commits[0].summary, "second");
+        assert_eq!(commits[1].summary, "first");
+        assert_eq!(commits[0].parent.as_deref(), Some(commits[1].sha.as_str()));
+        assert!(commits[1].parent.is_none()); // root commit
+
+        // Root commit vs its (empty) baseline → a.txt is added.
+        let root = &commits[1];
+        let changes = list_changes(
+            path.clone(),
+            Revision { kind: "empty".into(), r#ref: None },
+            Revision { kind: "ref".into(), r#ref: Some(root.sha.clone()) },
+        )
+        .unwrap();
+        assert!(changes.iter().any(|c| c.path == "a.txt" && c.status == "added"));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// End-to-end smoke test of the primary path: build a throwaway repo with

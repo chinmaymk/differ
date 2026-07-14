@@ -6,7 +6,13 @@
  */
 import { invoke } from '@tauri-apps/api/core';
 
-import type { ChangedFile, DiffEntry, DiffSource, Revision } from '../engine/model';
+import type {
+  ChangedFile,
+  CommitInfo,
+  DiffEntry,
+  DiffSource,
+  Revision,
+} from '../engine/model';
 
 /** Shape returned by the Rust `read_file` command. */
 interface FileContent {
@@ -37,6 +43,13 @@ export class TauriGitSource implements DiffSource {
       repoPath: this.repoPath,
       base,
       head,
+    });
+  }
+
+  listCommits(limit: number): Promise<CommitInfo[]> {
+    return invoke<CommitInfo[]>('list_commits', {
+      repoPath: this.repoPath,
+      limit,
     });
   }
 
