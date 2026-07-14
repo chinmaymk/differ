@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3b8eff"/>
+      <stop offset="1" stop-color="#0550ae"/>
+    </linearGradient>
+  </defs>
+
+  <!-- squircle background -->
+  <rect x="0" y="0" width="1024" height="1024" rx="225" ry="225" fill="url(#bg)"/>
+
+  <!-- git graph: bold fork from a base commit into a removed (red) and added (green) line -->
+  <g fill="none" stroke="#ffffff" stroke-width="84" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M512,520 L512,650"/>
+    <path d="M512,520 L296,278"/>
+    <path d="M512,520 L728,278"/>
+  </g>
+
+  <!-- commit nodes -->
+  <circle cx="512" cy="742" r="112" fill="#ffffff"/>
+  <circle cx="296" cy="278" r="112" fill="#f85149"/>
+  <circle cx="728" cy="278" r="112" fill="#3fb950"/>
+</svg>
