@@ -62,8 +62,15 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+          shared-key: ${{ matrix.platform }}
+          cache-on-failure: true
 
       - run: npm ci
 
+      # --debug: this job only needs to prove the app compiles and bundles.
+      # The release profile (opt-level=z, lto, codegen-units=1, no
+      # incremental) is reserved for the tag-triggered release build, where
+      # binary size matters — using it here would defeat rust-cache on every
+      # PR push and make incremental builds slow for no benefit.
       - name: Build app (frontend + Tauri bundle)
-        run: npm run tauri build
+        run: npm run tauri build -- --debug

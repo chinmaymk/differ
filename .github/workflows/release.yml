@@ -58,6 +58,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+          shared-key: ${{ matrix.platform }}-${{ matrix.args }}
+          cache-on-failure: true
 
       - run: npm ci
 
