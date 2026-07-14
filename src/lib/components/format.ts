@@ -28,6 +28,8 @@ export function kindGlyph(kind: SymbolKind): string {
       return 'κ';
     case 'field':
       return '·';
+    case 'test':
+      return '✓';
     default:
       return '•';
   }

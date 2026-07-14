@@ -91,6 +91,80 @@ func main() {}
     expect(f).toContain('function main');
   });
 
+  it('extracts describe/it blocks from JS/TS test files', async () => {
+    const src = `
+describe('Widget', () => {
+  it('renders', () => {
+    expect(1).toBe(1);
+  });
+
+  it.skip('handles errors', () => {});
+
+  describe.only('nested', () => {
+    test('works', function () {});
+  });
+});
+
+beforeEach(() => {
+  setup();
+});
+`;
+    const tsF = flat(await extractSymbols('typescript', src));
+    expect(tsF).toContain('test Widget');
+    expect(tsF).toContain('test renders');
+    expect(tsF).toContain('test handles errors');
+    expect(tsF).toContain('test nested');
+    expect(tsF).toContain('test works');
+    expect(tsF).toContain('test beforeEach');
+
+    const jsF = flat(await extractSymbols('javascript', src));
+    expect(jsF).toEqual(tsF);
+  });
+
+  it('recognizes tests written as plain declarations in Python/Go/Rust', async () => {
+    const pySrc = `
+import unittest
+
+class WidgetTest(unittest.TestCase):
+    def test_renders(self):
+        assert True
+
+def test_top_level():
+    assert True
+`;
+    const pyF = flat(await extractSymbols('python', pySrc));
+    expect(pyF).toContain('class WidgetTest');
+    expect(pyF).toContain('method test_renders');
+    expect(pyF).toContain('function test_top_level');
+
+    const goSrc = `
+package widget
+
+import "testing"
+
+func TestRenders(t *testing.T) {
+	if false {
+		t.Fail()
+	}
+}
+`;
+    const goF = flat(await extractSymbols('go', goSrc));
+    expect(goF).toContain('function TestRenders');
+
+    const rustSrc = `
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_renders() {
+        assert!(true);
+    }
+}
+`;
+    const rustF = flat(await extractSymbols('rust', rustSrc));
+    expect(rustF).toContain('module tests');
+    expect(rustF).toContain('function it_renders');
+  });
+
   it('returns [] for text-only languages', async () => {
     expect(await extractSymbols('css', 'a { color: red; }')).toEqual([]);
     expect(await extractSymbols(null, 'whatever')).toEqual([]);

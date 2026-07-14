@@ -27,12 +27,54 @@ export interface LangConfig {
 // Using `name: (_) @name` (wildcard) keeps queries robust across grammars that
 // disagree on whether a name is an `identifier` vs `type_identifier`, etc.
 
-const JS_QUERY = `
+const JS_DECL_QUERY = `
 (function_declaration name: (_) @name body: (statement_block) @body) @def.function
 (generator_function_declaration name: (_) @name body: (statement_block) @body) @def.function
 (class_declaration name: (_) @name body: (class_body) @body) @def.class
 (method_definition name: (_) @name body: (statement_block) @body) @def.method
 `;
+
+// Jest/Vitest/Mocha/Jasmine style test blocks are plain call expressions
+// (`describe('...', () => {...})`), not declarations, so they need their own
+// patterns on top of JS_QUERY. Covers plain calls and the common
+// `.only`/`.skip` member-call variants.
+const JS_TEST_QUERY = `
+(call_expression
+  function: (identifier) @_fn
+  arguments: (arguments
+    (string (string_fragment) @name)
+    [
+      (arrow_function body: (_) @body)
+      (function_expression body: (statement_block) @body)
+    ])
+  (#match? @_fn "^(describe|it|test|xdescribe|xit|fdescribe|fit|context|suite)$")) @def.test
+
+(call_expression
+  function: (member_expression
+    object: (identifier) @_fn
+    property: (property_identifier) @_prop)
+  arguments: (arguments
+    (string (string_fragment) @name)
+    [
+      (arrow_function body: (_) @body)
+      (function_expression body: (statement_block) @body)
+    ])
+  (#match? @_fn "^(describe|it|test|context|suite)$")
+  (#match? @_prop "^(only|skip)$")) @def.test
+
+; Hooks take only a callback, no name string — use the hook's own name.
+(call_expression
+  function: (identifier) @_fn @name
+  arguments: (arguments
+    .
+    [
+      (arrow_function body: (_) @body)
+      (function_expression body: (statement_block) @body)
+    ] .)
+  (#match? @_fn "^(beforeEach|afterEach|beforeAll|afterAll)$")) @def.test
+`;
+
+const JS_QUERY = JS_DECL_QUERY + JS_TEST_QUERY;
 
 const TS_QUERY =
   JS_QUERY +

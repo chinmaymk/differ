@@ -103,6 +103,7 @@ export type SymbolKind =
   | 'impl'
   | 'constant'
   | 'field'
+  | 'test'
   | 'other';
 
 /**
