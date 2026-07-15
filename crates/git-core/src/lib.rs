@@ -1099,8 +1099,13 @@ mod tests {
     /// for the `for_untracked` find-similar flag (see `list_changes`).
     #[test]
     fn unstaged_rename_is_detected() {
-        let (dir, _repo) = init_repo_with_commit("unstaged-rename");
+        let (dir, repo) = init_repo_with_commit("unstaged-rename");
         let path = dir.to_str().unwrap().to_string();
+        {
+            let mut config = repo.config().unwrap();
+            config.set_str("user.name", "Test User").unwrap();
+            config.set_str("user.email", "test@example.com").unwrap();
+        }
 
         std::fs::write(dir.join("old-name.txt"), b"alpha\nbeta\ngamma\n").unwrap();
         stage_paths(path.clone(), vec!["old-name.txt".into()]).unwrap();
