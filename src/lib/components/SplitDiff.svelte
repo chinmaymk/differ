@@ -1,19 +1,24 @@
 <script lang="ts">
-  import type { FileDiff, DiffLine, InlineSpan, SymbolChange } from '../engine/model';
+  import type { FileDiff, DiffLine, Hunk, HunkMode, InlineSpan, SymbolChange } from '../engine/model';
   import { computeHunkInline } from '../engine/text-diff';
   import { lineSegments } from './segments';
+  import type { SectionKey } from './staging';
 
   interface Props {
     file: FileDiff;
     selected?: SymbolChange | null;
     wrap?: boolean;
     neutral?: boolean;
+    section?: SectionKey | null;
+    onHunkAction?: (hunk: Hunk, mode: HunkMode) => void;
   }
-  let { file, selected = null, wrap = true, neutral = false }: Props = $props();
+  let { file, selected = null, wrap = true, neutral = false, section = null, onHunkAction }: Props =
+    $props();
 
   interface SplitRow {
     kind: 'hunk' | 'pair';
     header?: string;
+    hunk?: Hunk;
     left?: DiffLine;
     right?: DiffLine;
   }
@@ -26,6 +31,7 @@
       rows.push({
         kind: 'hunk',
         header: `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`,
+        hunk: h,
       });
       const lines = h.lines;
       let i = 0;
@@ -86,7 +92,22 @@
       <tbody>
         {#each built.rows as row}
           {#if row.kind === 'hunk'}
-            <tr class="hunk-row"><td class="hunk-head" colspan="4">{row.header}</td></tr>
+            <tr class="hunk-row">
+              <td class="hunk-head" colspan="4">
+                {row.header}
+                {#if onHunkAction && row.hunk}
+                  {@const hunk = row.hunk}
+                  <span class="hunk-actions">
+                    {#if section === 'unstaged'}
+                      <button onclick={() => onHunkAction(hunk, 'stage')}>Stage hunk</button>
+                      <button class="danger" onclick={() => onHunkAction(hunk, 'discard')}>Discard hunk</button>
+                    {:else if section === 'staged'}
+                      <button onclick={() => onHunkAction(hunk, 'unstage')}>Unstage hunk</button>
+                    {/if}
+                  </span>
+                {/if}
+              </td>
+            </tr>
           {:else}
             {@const L = row.left}
             {@const R = row.right}
@@ -181,6 +202,29 @@
     padding: 4px 12px;
     background: var(--bg-subtle);
     font-size: 11px;
+  }
+  .hunk-actions {
+    float: right;
+    display: flex;
+    gap: 6px;
+  }
+  .hunk-actions button {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--fg-muted);
+    padding: 1px 8px;
+    cursor: pointer;
+    font-size: 10.5px;
+    font-family: var(--sans);
+  }
+  .hunk-actions button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .hunk-actions button.danger:hover {
+    border-color: var(--del-fg);
+    color: var(--del-fg);
   }
   /* Syntax highlighting (shared classes) */
   .code :global(.tok-keyword) { color: var(--syn-keyword); }

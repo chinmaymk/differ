@@ -1,8 +1,9 @@
 <script lang="ts">
-  import type { FileDiff, DiffLine, InlineSpan, SymbolChange } from '../engine/model';
+  import type { FileDiff, DiffLine, Hunk, HunkMode, InlineSpan, SymbolChange } from '../engine/model';
   import { computeHunkInline } from '../engine/text-diff';
   import { lineSegments } from './segments';
   import { enclosingSymbols } from './symbol-path';
+  import type { SectionKey } from './staging';
 
   interface Props {
     file: FileDiff;
@@ -10,13 +11,19 @@
     wrap?: boolean;
     /** Whole-file add/remove: render neutral (no full-line green/red). */
     neutral?: boolean;
+    /** Which side of "uncommitted changes" is showing; null for read-only
+     * (demo mode, or a historical-commit comparison) — hides hunk actions. */
+    section?: SectionKey | null;
+    onHunkAction?: (hunk: Hunk, mode: HunkMode) => void;
   }
-  let { file, selected = null, wrap = true, neutral = false }: Props = $props();
+  let { file, selected = null, wrap = true, neutral = false, section = null, onHunkAction }: Props =
+    $props();
 
   interface Row {
     kind: 'hunk' | 'line';
     header?: string;
     crumb?: string;
+    hunk?: Hunk;
     line?: DiffLine;
   }
 
@@ -34,6 +41,7 @@
         kind: 'hunk',
         header: `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`,
         crumb,
+        hunk: h,
       });
       for (const line of h.lines) rows.push({ kind: 'line', line });
     }
@@ -89,6 +97,17 @@
               <td class="hunk-head">
                 <span class="hunk-at">{row.header}</span>
                 {#if row.crumb}<span class="crumb">{row.crumb}</span>{/if}
+                {#if onHunkAction && row.hunk}
+                  {@const hunk = row.hunk}
+                  <span class="hunk-actions">
+                    {#if section === 'unstaged'}
+                      <button onclick={() => onHunkAction(hunk, 'stage')}>Stage hunk</button>
+                      <button class="danger" onclick={() => onHunkAction(hunk, 'discard')}>Discard hunk</button>
+                    {:else if section === 'staged'}
+                      <button onclick={() => onHunkAction(hunk, 'unstage')}>Unstage hunk</button>
+                    {/if}
+                  </span>
+                {/if}
               </td>
             </tr>
           {:else if row.line}
@@ -213,5 +232,28 @@
   }
   .hunk-row .gutter {
     background: var(--bg-subtle);
+  }
+  .hunk-actions {
+    float: right;
+    display: flex;
+    gap: 6px;
+  }
+  .hunk-actions button {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--fg-muted);
+    padding: 1px 8px;
+    cursor: pointer;
+    font-size: 10.5px;
+    font-family: var(--sans);
+  }
+  .hunk-actions button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .hunk-actions button.danger:hover {
+    border-color: var(--del-fg);
+    color: var(--del-fg);
   }
 </style>

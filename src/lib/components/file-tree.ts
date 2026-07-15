@@ -63,6 +63,12 @@ function sortDir(dir: TreeDir): void {
   for (const c of dir.children) if (c.type === 'dir') sortDir(c);
 }
 
+/** All file paths under a node (itself, if a file; every descendant file, if a dir). */
+export function collectPaths(node: TreeNode): string[] {
+  if (node.type === 'file') return [node.path];
+  return node.children.flatMap(collectPaths);
+}
+
 /** Merge single-child directory chains: dir with one dir child → combined. */
 function compact(dir: TreeDir): void {
   for (const child of dir.children) {

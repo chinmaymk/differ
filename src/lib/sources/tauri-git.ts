@@ -11,6 +11,8 @@ import type {
   CommitInfo,
   DiffEntry,
   DiffSource,
+  HunkMode,
+  HunkPatch,
   Revision,
 } from '../engine/model';
 
@@ -79,5 +81,29 @@ export class TauriGitSource implements DiffSource {
       oldBytes: oldContent.bytes != null ? base64ToBytes(oldContent.bytes) : null,
       newBytes: newContent.bytes != null ? base64ToBytes(newContent.bytes) : null,
     };
+  }
+
+  stagePaths(paths: string[]): Promise<void> {
+    return invoke('stage_paths', { repoPath: this.repoPath, paths });
+  }
+
+  unstagePaths(paths: string[]): Promise<void> {
+    return invoke('unstage_paths', { repoPath: this.repoPath, paths });
+  }
+
+  discardPaths(paths: string[]): Promise<void> {
+    return invoke('discard_paths', { repoPath: this.repoPath, paths });
+  }
+
+  applyHunk(path: string, hunk: HunkPatch, mode: HunkMode): Promise<void> {
+    return invoke('apply_hunk', { repoPath: this.repoPath, path, hunk, mode });
+  }
+
+  commit(message: string): Promise<CommitInfo> {
+    return invoke<CommitInfo>('commit', { repoPath: this.repoPath, message });
+  }
+
+  push(): Promise<string> {
+    return invoke<string>('push', { repoPath: this.repoPath });
   }
 }

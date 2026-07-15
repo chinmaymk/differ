@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { FileDiff } from '../engine/model';
   import type { TreeNode, TreeDir } from './file-tree';
+  import { collectPaths } from './file-tree';
   import { fileStatusGlyph, statusColor } from './format';
   import Self from './FileTree.svelte';
 
@@ -13,6 +14,16 @@
     onselect: (path: string) => void;
     ontoggleViewed: (path: string) => void;
     depth?: number;
+    /**
+     * Presence of exactly one of these two says which section this tree
+     * renders: `onStage` set = unstaged tree (checkbox stages); `onUnstage`
+     * set = staged tree (checkbox unstages). Neither set = read-only
+     * (demo mode, or a historical-commit comparison).
+     */
+    onStage?: (paths: string[]) => void;
+    onUnstage?: (paths: string[]) => void;
+    /** Only ever passed alongside `onStage` (discard only applies to unstaged changes). */
+    onDiscard?: (paths: string[]) => void;
   }
   let {
     nodes,
@@ -23,7 +34,13 @@
     onselect,
     ontoggleViewed,
     depth = 0,
+    onStage,
+    onUnstage,
+    onDiscard,
   }: Props = $props();
+
+  const staged = $derived(!!onUnstage);
+  const canStage = $derived(!!(onStage || onUnstage));
 
   let collapsed = $state<Record<string, boolean>>({});
   const isOpen = (d: TreeDir) => !collapsed[d.path];
@@ -47,6 +64,11 @@
     return { add, del };
   }
 
+  function toggleStage(paths: string[]) {
+    if (staged) onUnstage?.(paths);
+    else onStage?.(paths);
+  }
+
   const pad = (d: number) => `${d * 12 + 8}px`;
 </script>
 
@@ -55,14 +77,36 @@
     {#if node.type === 'dir'}
       {@const c = dirCounts(node)}
       <li>
-        <button class="row dir" style="padding-left: {pad(depth)}" onclick={() => (collapsed[node.path] = isOpen(node))}>
-          <span class="tw">{isOpen(node) ? '▾' : '▸'}</span>
-          <span class="folder">{node.name}</span>
-          <span class="counts">
-            {#if c.add > 0}<span class="add">+{c.add}</span>{/if}
-            {#if c.del > 0}<span class="del">−{c.del}</span>{/if}
-          </span>
-        </button>
+        <div class="row dir" style="padding-left: {pad(depth)}">
+          <button class="dirbtn" onclick={() => (collapsed[node.path] = isOpen(node))}>
+            <span class="tw">{isOpen(node) ? '▾' : '▸'}</span>
+            <span class="folder">{node.name}</span>
+            <span class="counts">
+              {#if c.add > 0}<span class="add">+{c.add}</span>{/if}
+              {#if c.del > 0}<span class="del">−{c.del}</span>{/if}
+            </span>
+          </button>
+          {#if canStage}
+            <button
+              class="stagebtn"
+              title={staged ? 'Unstage all in this folder' : 'Stage all in this folder'}
+              aria-label={staged ? 'Unstage folder' : 'Stage folder'}
+              onclick={() => toggleStage(collectPaths(node))}
+            >
+              {staged ? '☑' : '☐'}
+            </button>
+          {/if}
+          {#if onDiscard}
+            <button
+              class="discardbtn"
+              title="Discard all changes in this folder"
+              aria-label="Discard folder changes"
+              onclick={() => onDiscard?.(collectPaths(node))}
+            >
+              ↺
+            </button>
+          {/if}
+        </div>
         {#if isOpen(node)}
           <Self
             nodes={node.children}
@@ -73,6 +117,9 @@
             {onselect}
             {ontoggleViewed}
             depth={depth + 1}
+            {onStage}
+            {onUnstage}
+            {onDiscard}
           />
         {/if}
       </li>
@@ -101,6 +148,26 @@
               {/if}
             </span>
           </button>
+          {#if canStage}
+            <button
+              class="stagebtn"
+              title={staged ? 'Unstage' : 'Stage'}
+              aria-label={staged ? 'Unstage file' : 'Stage file'}
+              onclick={() => toggleStage([node.path])}
+            >
+              {staged ? '☑' : '☐'}
+            </button>
+          {/if}
+          {#if onDiscard}
+            <button
+              class="discardbtn"
+              title="Discard changes"
+              aria-label="Discard file changes"
+              onclick={() => onDiscard?.([node.path])}
+            >
+              ↺
+            </button>
+          {/if}
           <button
             class="viewbtn"
             title={viewed.has(node.path) ? 'Mark as not viewed' : 'Mark as viewed'}
@@ -126,17 +193,28 @@
     align-items: center;
     gap: 6px;
     width: 100%;
-    border: none;
-    background: none;
     color: var(--fg);
     font-size: 12.5px;
-    cursor: pointer;
-    text-align: left;
-    padding-top: 4px;
-    padding-bottom: 4px;
-    padding-right: 8px;
     border-radius: 6px;
     font-family: var(--mono);
+  }
+  .row.dir {
+    padding: 0 4px 0 0;
+    gap: 0;
+  }
+  .dirbtn {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+    padding: 4px 0;
+    font-family: var(--mono);
+    font-size: 12.5px;
   }
   .row.file {
     padding: 0 4px 0 0;
@@ -206,6 +284,8 @@
   .del { color: var(--del-fg); }
   .err { color: var(--del-fg); font-weight: 700; }
   .spin { color: var(--fg-muted); }
+  .stagebtn,
+  .discardbtn,
   .viewbtn {
     flex: none;
     border: none;
@@ -214,6 +294,8 @@
     cursor: pointer;
     width: 20px;
     font-size: 12px;
+  }
+  .viewbtn {
     opacity: 0;
   }
   .row.file:hover .viewbtn,
@@ -222,5 +304,17 @@
   }
   .row.viewed .viewbtn {
     color: var(--add-fg);
+  }
+  .discardbtn {
+    opacity: 0;
+  }
+  .row:hover .discardbtn {
+    opacity: 1;
+  }
+  .discardbtn:hover {
+    color: var(--del-fg);
+  }
+  .stagebtn:hover {
+    color: var(--accent);
   }
 </style>

@@ -1,5 +1,13 @@
 <script lang="ts">
-  import type { ChangedFile, CommitInfo, DiffSource, FileDiff } from './lib/engine/model';
+  import type {
+    ChangedFile,
+    CommitInfo,
+    DiffSource,
+    FileDiff,
+    Hunk,
+    HunkMode,
+    Revision,
+  } from './lib/engine/model';
   import { EngineClient } from './lib/worker/client';
   import { sampleSource } from './lib/sources/samples';
   import {
@@ -13,6 +21,7 @@
     headRevision,
     type Comparison,
   } from './lib/components/comparison';
+  import { sectionKey, type SectionKey } from './lib/components/staging';
   import FileList from './lib/components/FileList.svelte';
   import FileDiffView from './lib/components/FileDiffView.svelte';
   import Welcome from './lib/components/Welcome.svelte';
@@ -25,18 +34,19 @@
   let comparison = $state<Comparison>({ kind: 'worktree' });
   let commits = $state<CommitInfo[]>([]);
   let recentRepos = $state<RecentRepo[]>(getRecentRepos());
-  let files = $state<ChangedFile[]>([]);
+  let stagedFiles = $state<ChangedFile[]>([]);
+  let unstagedFiles = $state<ChangedFile[]>([]);
+  /** Keyed by `sectionKey(section, path)` — the same path can have an
+   * independent staged diff and unstaged diff open at once. */
   let results = $state<Record<string, FileDiff>>({});
   let errors = $state<Record<string, string>>({});
-  let selectedPath = $state<string | null>(null);
+  let selected = $state<{ section: SectionKey; path: string } | null>(null);
   let status = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
   let errorMsg = $state('');
   let viewed = $state<Set<string>>(new Set());
 
-  // Old/new revisions derived from the current comparison.
-  const base = $derived(baseRevision(comparison));
-  const head = $derived(headRevision(comparison));
   const canBrowseHistory = $derived(!!source?.listCommits);
+  const canStage = $derived(!!source?.stagePaths && comparison.kind === 'worktree');
 
   // --- Persisted UI preferences ---------------------------------------------
   const SETTINGS_KEY = 'dv-settings';
@@ -115,63 +125,138 @@
     el.addEventListener('pointerup', up);
   }
 
-  const selectedFile = $derived(selectedPath ? results[selectedPath] ?? null : null);
+  const selectedFile = $derived(
+    selected ? results[sectionKey(selected.section, selected.path)] ?? null : null,
+  );
 
-  function toggleViewed(path: string) {
+  // --- Revisions per section --------------------------------------------
+  // In "worktree" mode, staged/unstaged are two independent diffs (index vs
+  // HEAD, workdir vs index); in "commit" mode there's only ever one diff, so
+  // everything lives in the "unstaged" section and "staged" stays empty.
+  function base(section: SectionKey): Revision {
+    if (comparison.kind !== 'worktree') return baseRevision(comparison);
+    return section === 'staged' ? { kind: 'ref', ref: 'HEAD' } : { kind: 'index' };
+  }
+  function head(section: SectionKey): Revision {
+    if (comparison.kind !== 'worktree') return headRevision(comparison);
+    return section === 'staged' ? { kind: 'index' } : { kind: 'worktree' };
+  }
+
+  function toggleViewed(section: SectionKey, path: string) {
+    const k = sectionKey(section, path);
     const next = new Set(viewed);
-    if (next.has(path)) next.delete(path);
-    else next.add(path);
+    if (next.has(k)) next.delete(k);
+    else next.add(k);
     viewed = next;
+  }
+
+  function combinedList(): { section: SectionKey; file: ChangedFile }[] {
+    return [
+      ...stagedFiles.map((file) => ({ section: 'staged' as const, file })),
+      ...unstagedFiles.map((file) => ({ section: 'unstaged' as const, file })),
+    ];
   }
 
   // Keyboard navigation for high-volume review.
   function onKey(e: KeyboardEvent) {
-    if (status !== 'ready' || files.length === 0) return;
+    if (status !== 'ready') return;
     const target = e.target as HTMLElement;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
-    const idx = files.findIndex((f) => f.path === selectedPath);
+    const list = combinedList();
+    if (list.length === 0) return;
+    const idx = list.findIndex(
+      (x) => selected && x.section === selected.section && x.file.path === selected.path,
+    );
     if (e.key === 'j' || e.key === 'ArrowDown') {
       e.preventDefault();
-      select(files[Math.min(files.length - 1, idx + 1)].path);
+      const next = list[Math.min(list.length - 1, idx + 1)];
+      select(next.section, next.file.path);
     } else if (e.key === 'k' || e.key === 'ArrowUp') {
       e.preventDefault();
-      select(files[Math.max(0, idx - 1)].path);
-    } else if (e.key === 'v' && selectedPath) {
+      const prev = list[Math.max(0, idx - 1)];
+      select(prev.section, prev.file.path);
+    } else if (e.key === 'v' && selected) {
       e.preventDefault();
-      toggleViewed(selectedPath);
+      toggleViewed(selected.section, selected.path);
     }
   }
 
-  async function buildOne(src: DiffSource, file: ChangedFile, force = false): Promise<void> {
-    if (!force && (results[file.path] || errors[file.path])) return;
+  async function buildOne(
+    src: DiffSource,
+    section: SectionKey,
+    file: ChangedFile,
+    force = false,
+  ): Promise<void> {
+    const k = sectionKey(section, file.path);
+    if (!force && (results[k] || errors[k])) return;
     try {
-      const entry = await src.readEntry(base, head, file);
+      const entry = await src.readEntry(base(section), head(section), file);
       const fd = await client.build(entry);
-      results = { ...results, [file.path]: fd };
-      if (errors[file.path]) {
+      results = { ...results, [k]: fd };
+      if (errors[k]) {
         const next = { ...errors };
-        delete next[file.path];
+        delete next[k];
         errors = next;
       }
     } catch (e) {
-      errors = { ...errors, [file.path]: e instanceof Error ? e.message : String(e) };
+      errors = { ...errors, [k]: e instanceof Error ? e.message : String(e) };
     }
   }
 
-  // Auto-refresh working-tree changes as a coding agent edits files.
+  function reselectAfterMutation(staged: ChangedFile[], unstaged: ChangedFile[]) {
+    if (!selected) return;
+    const { section, path } = selected;
+    const sameList = section === 'staged' ? staged : unstaged;
+    if (sameList.some((f) => f.path === path)) return; // still valid, nothing to do
+    const otherSection: SectionKey = section === 'staged' ? 'unstaged' : 'staged';
+    const otherList = otherSection === 'staged' ? staged : unstaged;
+    if (otherList.some((f) => f.path === path)) {
+      selected = { section: otherSection, path };
+      return;
+    }
+    if (sameList[0]) {
+      selected = { section, path: sameList[0].path };
+      return;
+    }
+    selected = staged[0]
+      ? { section: 'staged', path: staged[0].path }
+      : unstaged[0]
+        ? { section: 'unstaged', path: unstaged[0].path }
+        : null;
+  }
+
+  // Auto-refresh working-tree changes as a coding agent edits files, and
+  // after any local mutation (stage/unstage/discard/commit).
   let refreshing = false;
   async function refresh(): Promise<void> {
     if (!source || refreshing) return;
     refreshing = true;
+    const src = source;
     try {
-      const list = await source.listChanges(base, head);
-      const paths = new Set(list.map((f) => f.path));
-      files = list;
-      results = Object.fromEntries(Object.entries(results).filter(([p]) => paths.has(p)));
-      errors = Object.fromEntries(Object.entries(errors).filter(([p]) => paths.has(p)));
-      viewed = new Set([...viewed].filter((p) => paths.has(p)));
-      if (selectedPath && !paths.has(selectedPath)) selectedPath = list[0]?.path ?? null;
-      await Promise.all(list.map((f) => buildOne(source!, f, true)));
+      let staged: ChangedFile[] = [];
+      let unstaged: ChangedFile[];
+      if (comparison.kind === 'worktree') {
+        [staged, unstaged] = await Promise.all([
+          src.listChanges(base('staged'), head('staged')),
+          src.listChanges(base('unstaged'), head('unstaged')),
+        ]);
+      } else {
+        unstaged = await src.listChanges(base('unstaged'), head('unstaged'));
+      }
+      const validKeys = new Set([
+        ...staged.map((f) => sectionKey('staged', f.path)),
+        ...unstaged.map((f) => sectionKey('unstaged', f.path)),
+      ]);
+      stagedFiles = staged;
+      unstagedFiles = unstaged;
+      results = Object.fromEntries(Object.entries(results).filter(([k]) => validKeys.has(k)));
+      errors = Object.fromEntries(Object.entries(errors).filter(([k]) => validKeys.has(k)));
+      viewed = new Set([...viewed].filter((k) => validKeys.has(k)));
+      reselectAfterMutation(staged, unstaged);
+      await Promise.all([
+        ...staged.map((f) => buildOne(src, 'staged', f, true)),
+        ...unstaged.map((f) => buildOne(src, 'unstaged', f, true)),
+      ]);
     } catch {
       // Keep the last good state on a transient failure.
     } finally {
@@ -191,16 +276,34 @@
     errorMsg = '';
     results = {};
     errors = {};
-    selectedPath = null;
+    selected = null;
     viewed = new Set();
     const src = source;
     try {
-      const list = await src.listChanges(base, head);
-      files = list;
-      selectedPath = list[0]?.path ?? null;
+      let staged: ChangedFile[] = [];
+      let unstaged: ChangedFile[];
+      if (comparison.kind === 'worktree') {
+        [staged, unstaged] = await Promise.all([
+          src.listChanges(base('staged'), head('staged')),
+          src.listChanges(base('unstaged'), head('unstaged')),
+        ]);
+      } else {
+        unstaged = await src.listChanges(base('unstaged'), head('unstaged'));
+      }
+      stagedFiles = staged;
+      unstagedFiles = unstaged;
       status = 'ready';
-      if (selectedPath) await buildOne(src, list[0]);
-      for (const f of list) buildOne(src, f);
+      const first = staged[0]
+        ? { section: 'staged' as const, file: staged[0] }
+        : unstaged[0]
+          ? { section: 'unstaged' as const, file: unstaged[0] }
+          : null;
+      if (first) {
+        selected = { section: first.section, path: first.file.path };
+        await buildOne(src, first.section, first.file);
+      }
+      for (const f of staged) buildOne(src, 'staged', f);
+      for (const f of unstaged) buildOne(src, 'unstaged', f);
     } catch (e) {
       status = 'error';
       errorMsg = e instanceof Error ? e.message : String(e);
@@ -264,17 +367,109 @@
   function goHome() {
     source = null;
     status = 'idle';
-    files = [];
+    stagedFiles = [];
+    unstagedFiles = [];
     results = {};
     errors = {};
-    selectedPath = null;
+    selected = null;
     commits = [];
     recentRepos = getRecentRepos();
   }
 
-  function select(path: string) {
-    selectedPath = path;
-    if (source) void buildOne(source, files.find((f) => f.path === path)!);
+  function select(section: SectionKey, path: string) {
+    selected = { section, path };
+    const file = (section === 'staged' ? stagedFiles : unstagedFiles).find((f) => f.path === path);
+    if (source && file) void buildOne(source, section, file);
+  }
+
+  // --- Write operations: stage / unstage / discard / hunks / commit / push --
+  let actionError = $state<string | null>(null);
+
+  async function runAction(fn: () => Promise<unknown>): Promise<void> {
+    try {
+      actionError = null;
+      await fn();
+      await refresh();
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  function confirmDiscard(label: string): boolean {
+    return window.confirm(`Discard changes to ${label}? This cannot be undone.`);
+  }
+
+  function stagePaths(paths: string[]) {
+    if (!source?.stagePaths || paths.length === 0) return;
+    const src = source;
+    void runAction(() => src.stagePaths!(paths));
+  }
+  function unstagePaths(paths: string[]) {
+    if (!source?.unstagePaths || paths.length === 0) return;
+    const src = source;
+    void runAction(() => src.unstagePaths!(paths));
+  }
+  function discardPaths(paths: string[]) {
+    if (!source?.discardPaths || paths.length === 0) return;
+    const label = paths.length === 1 ? paths[0] : `${paths.length} files`;
+    if (!confirmDiscard(label)) return;
+    const src = source;
+    void runAction(() => src.discardPaths!(paths));
+  }
+
+  function onHunkAction(hunk: Hunk, mode: HunkMode) {
+    if (!source?.applyHunk || !selected) return;
+    if (mode === 'discard' && !confirmDiscard('this hunk')) return;
+    const path = selected.path;
+    const src = source;
+    void runAction(() =>
+      src.applyHunk!(
+        path,
+        {
+          oldStart: hunk.oldStart,
+          oldLines: hunk.oldLines,
+          newStart: hunk.newStart,
+          newLines: hunk.newLines,
+          lines: hunk.lines.map((l) => ({ op: l.op, text: l.text })),
+        },
+        mode,
+      ),
+    );
+  }
+
+  let committing = $state(false);
+  let pushing = $state(false);
+  let pushResult = $state<string | null>(null);
+  let pushError = $state<string | null>(null);
+
+  async function commitStaged(message: string): Promise<boolean> {
+    if (!source?.commit || committing) return false;
+    committing = true;
+    actionError = null;
+    try {
+      await source.commit(message);
+      await refresh();
+      return true;
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : String(e);
+      return false;
+    } finally {
+      committing = false;
+    }
+  }
+
+  async function doPush(): Promise<void> {
+    if (!source?.push || pushing) return;
+    pushing = true;
+    pushResult = null;
+    pushError = null;
+    try {
+      pushResult = await source.push();
+    } catch (e) {
+      pushError = e instanceof Error ? e.message : String(e);
+    } finally {
+      pushing = false;
+    }
   }
 
   // In the desktop app, auto-open the repo we were launched from.
@@ -306,7 +501,6 @@
       {#if isTauri}
         <button onclick={pickRepo}>Open…</button>
       {/if}
-      <button onclick={openDemo}>Demo</button>
       <div class="fontstepper" title="Diff font size">
         <button onclick={() => bumpFont(-1)} aria-label="Smaller font">A−</button>
         <span class="fs">{fontSize}</span>
@@ -350,14 +544,31 @@
         {#if canBrowseHistory}
           <ComparisonBar {comparison} {commits} onSelect={setComparison} />
         {/if}
+        {#if actionError}
+          <div class="action-error">
+            <span>{actionError}</span>
+            <button onclick={() => (actionError = null)} aria-label="Dismiss">×</button>
+          </div>
+        {/if}
         <FileList
-          {files}
+          {stagedFiles}
+          {unstagedFiles}
           {results}
           {errors}
-          {selectedPath}
+          {selected}
           {viewed}
           onselect={select}
           ontoggleViewed={toggleViewed}
+          {canStage}
+          onStage={stagePaths}
+          onUnstage={unstagePaths}
+          onDiscard={discardPaths}
+          {committing}
+          {pushing}
+          {pushResult}
+          {pushError}
+          onCommit={commitStaged}
+          onPush={doPush}
         />
       </div>
       <div
@@ -379,10 +590,12 @@
             onViewMode={(m) => (viewMode = m)}
             onWrap={(w) => (wrap = w)}
             onToggleSemantic={() => (showSemantic = !showSemantic)}
+            section={canStage ? (selected?.section ?? null) : null}
+            {onHunkAction}
           />
-        {:else if selectedPath && errors[selectedPath]}
-          <div class="placeholder error"><p>{errors[selectedPath]}</p></div>
-        {:else if selectedPath}
+        {:else if selected && errors[sectionKey(selected.section, selected.path)]}
+          <div class="placeholder error"><p>{errors[sectionKey(selected.section, selected.path)]}</p></div>
+        {:else if selected}
           <div class="placeholder"><p>Analyzing…</p></div>
         {:else}
           <div class="placeholder"><p>No changes in this comparison.</p></div>
@@ -514,6 +727,31 @@
     min-height: 0;
     overflow: hidden;
     background: var(--bg-subtle);
+  }
+  .action-error {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--del-fg) 12%, transparent);
+    color: var(--del-fg);
+    font-size: 11.5px;
+  }
+  .action-error span {
+    flex: 1;
+    min-width: 0;
+    word-break: break-word;
+  }
+  .action-error button {
+    flex: none;
+    border: none;
+    background: none;
+    padding: 0 2px;
+    color: inherit;
+    font-size: 14px;
+    line-height: 1;
   }
   .fl-divider {
     cursor: col-resize;

@@ -1,10 +1,11 @@
 <script lang="ts">
-  import type { FileDiff, SymbolChange, SymbolStatus } from '../engine/model';
+  import type { FileDiff, Hunk, HunkMode, SymbolChange, SymbolStatus } from '../engine/model';
   import SemanticTree from './SemanticTree.svelte';
   import RawDiff from './RawDiff.svelte';
   import SplitDiff from './SplitDiff.svelte';
   import ImageDiff from './ImageDiff.svelte';
   import { splitPath, statusColor } from './format';
+  import type { SectionKey } from './staging';
 
   interface Props {
     file: FileDiff;
@@ -14,9 +15,20 @@
     onViewMode: (m: 'unified' | 'split') => void;
     onWrap: (w: boolean) => void;
     onToggleSemantic: () => void;
+    section?: SectionKey | null;
+    onHunkAction?: (hunk: Hunk, mode: HunkMode) => void;
   }
-  let { file, viewMode, wrap, showSemantic, onViewMode, onWrap, onToggleSemantic }: Props =
-    $props();
+  let {
+    file,
+    viewMode,
+    wrap,
+    showSemantic,
+    onViewMode,
+    onWrap,
+    onToggleSemantic,
+    section = null,
+    onHunkAction,
+  }: Props = $props();
 
   let selected = $state<SymbolChange | null>(null);
   $effect(() => {
@@ -155,9 +167,9 @@
     >
       <section class="rawpane">
         {#if viewMode === 'split'}
-          <SplitDiff {file} {selected} {wrap} {neutral} />
+          <SplitDiff {file} {selected} {wrap} {neutral} {section} {onHunkAction} />
         {:else}
-          <RawDiff {file} {selected} {wrap} {neutral} />
+          <RawDiff {file} {selected} {wrap} {neutral} {section} {onHunkAction} />
         {/if}
       </section>
       {#if showTree}

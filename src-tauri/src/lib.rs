@@ -11,7 +11,13 @@ pub fn run() {
             git::repo_root,
             git::list_commits,
             git::list_changes,
-            git::read_file
+            git::read_file,
+            git::apply_hunk,
+            git::stage_paths,
+            git::unstage_paths,
+            git::discard_paths,
+            git::commit,
+            git::push
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

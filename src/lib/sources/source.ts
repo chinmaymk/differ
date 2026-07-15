@@ -6,5 +6,7 @@ export type {
   ChangedFile,
   DiffEntry,
   DiffSource,
+  HunkMode,
+  HunkPatch,
   Revision,
 } from '../engine/model';

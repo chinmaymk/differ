@@ -274,6 +274,23 @@ export interface CommitInfo {
 }
 
 /**
+ * A single hunk's exact content, sent verbatim to the backend for staging.
+ * Deliberately the same shape as `Hunk` (minus render-only fields) so the
+ * boundary a user clicked "stage"/"discard" on is always the boundary that
+ * gets applied — the backend never recomputes its own diff to find it.
+ */
+export interface HunkPatch {
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  lines: { op: LineOp; text: string }[];
+}
+
+/** What to do with a hunk sent via `DiffSource.applyHunk`. */
+export type HunkMode = 'stage' | 'unstage' | 'discard';
+
+/**
  * Source-agnostic provider of diff entries. Implementations: TauriGitSource
  * (local git via Rust), and later browser/GitHub providers. The engine only
  * ever sees `DiffEntry` triples and never knows the origin.
@@ -294,4 +311,24 @@ export interface DiffSource {
   ): Promise<DiffEntry>;
   /** List recent commits, if the source is backed by history (git). */
   listCommits?(limit: number): Promise<CommitInfo[]>;
+
+  // -- Write operations, present only for sources backed by a real local
+  // repo (desktop). Absent entirely for read-only sources (demo/paste
+  // mode) — callers gate UI on these being defined, same as `listCommits`.
+
+  /** Stage a batch of paths (files or, from a directory action, all files
+   * beneath it). A path missing from the working directory is staged as a
+   * deletion. */
+  stagePaths?(paths: string[]): Promise<void>;
+  /** Unstage a batch of paths, resetting their index entries to HEAD. */
+  unstagePaths?(paths: string[]): Promise<void>;
+  /** Discard uncommitted working-tree changes for a batch of paths. A path
+   * with no index entry (never staged) is deleted outright. */
+  discardPaths?(paths: string[]): Promise<void>;
+  /** Stage, unstage, or discard exactly one hunk of one file. */
+  applyHunk?(path: string, hunk: HunkPatch, mode: HunkMode): Promise<void>;
+  /** Commit the current index as a new commit on HEAD. */
+  commit?(message: string): Promise<CommitInfo>;
+  /** Push the current branch. Resolves with a status message. */
+  push?(): Promise<string>;
 }
