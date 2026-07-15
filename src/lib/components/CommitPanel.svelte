@@ -17,6 +17,12 @@
     const ok = await onCommit(message);
     if (ok) message = '';
   }
+
+  // Reflects on the button itself; the message below stays until the next
+  // push attempt resets it (see App.svelte's `doPush`).
+  const pushState = $derived(
+    pushing ? 'pushing' : pushError ? 'error' : pushResult !== null ? 'success' : 'idle',
+  );
 </script>
 
 <div class="commit">
@@ -40,8 +46,22 @@
     >
       {committing ? 'Committing…' : `Commit ${stagedCount} file${stagedCount === 1 ? '' : 's'}`}
     </button>
-    <button class="pushbtn" disabled={pushing} onclick={onPush}>
-      {pushing ? 'Pushing…' : 'Push'}
+    <button
+      class="pushbtn"
+      class:success={pushState === 'success'}
+      class:error={pushState === 'error'}
+      disabled={pushing}
+      onclick={onPush}
+    >
+      {#if pushState === 'pushing'}
+        <span class="spinner" aria-hidden="true"></span> Pushing…
+      {:else if pushState === 'success'}
+        <span aria-hidden="true">✓</span> Pushed
+      {:else if pushState === 'error'}
+        <span aria-hidden="true">✗</span> Push failed
+      {:else}
+        Push
+      {/if}
     </button>
   </div>
   {#if pushError}
@@ -100,6 +120,33 @@
   .commitbtn:not(:disabled) {
     border-color: var(--accent);
     color: var(--accent);
+  }
+  .pushbtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .pushbtn.success {
+    border-color: var(--add-fg);
+    color: var(--add-fg);
+  }
+  .pushbtn.error {
+    border-color: var(--del-fg);
+    color: var(--del-fg);
+  }
+  .spinner {
+    width: 9px;
+    height: 9px;
+    border: 1.5px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
   .status {
     margin: 0;
