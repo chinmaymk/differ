@@ -18,22 +18,13 @@ import type {
   TagInfo,
   WorktreeInfo,
 } from '../engine/model';
+import { base64ToBytes } from './base64';
 
 /** Shape returned by the Rust `read_file` command. */
 interface FileContent {
   /** Base64 content, or null when the file is absent on this side or binary. */
   bytes: string | null;
   binary: boolean;
-}
-
-/** Decode a base64 string into raw bytes. */
-function base64ToBytes(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) {
-    out[i] = bin.charCodeAt(i);
-  }
-  return out;
 }
 
 export class TauriGitSource implements DiffSource {

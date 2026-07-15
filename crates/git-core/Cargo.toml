@@ -1,0 +1,12 @@
+[package]
+name = "git-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# libgit2 bindings; the git2 crate vendors libgit2 by default so no system dep.
+git2 = { version = "0.19", default-features = false }
+# base64 for transferring raw file bytes across the IPC/HTTP boundary as JSON.
+base64 = "0.22"

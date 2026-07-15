@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = ["src-tauri", "crates/git-core", "crates/server"]
+
+# Moved here (unchanged) from src-tauri/Cargo.toml — Cargo only honors
+# [profile.*] at the workspace root, so it was silently ignored once
+# src-tauri became a workspace member. Size-optimized: keeps the desktop
+# binary small (stated project requirement — see src-tauri/CLAUDE.md, don't
+# change these values toward compile speed/unwinding without asking first).
+#
+# This also applies to `crates/server`'s release build, since Cargo workspace
+# profiles are shared across members: `panic = "abort"` means a genuine panic
+# during a request (git-core's own contract is to never panic on user input,
+# so this would only fire on a real bug) aborts the whole server process
+# rather than being caught by `run_blocking`'s spawn_blocking recovery and
+# turned into a 500 for just that request. Ask if you'd rather split this
+# into a separate profile for the server.
+[profile.release]
+opt-level = "z"     # optimize for size
+lto = true          # link-time optimization
+codegen-units = 1   # better optimization, slower compile
+strip = true        # strip symbols from the binary
+panic = "abort"     # no unwinding machinery
+incremental = false
