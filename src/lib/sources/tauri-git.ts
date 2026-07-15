@@ -7,6 +7,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 import type {
+  BranchInfo,
   ChangedFile,
   CommitInfo,
   DiffEntry,
@@ -14,6 +15,8 @@ import type {
   HunkMode,
   HunkPatch,
   Revision,
+  TagInfo,
+  WorktreeInfo,
 } from '../engine/model';
 
 /** Shape returned by the Rust `read_file` command. */
@@ -53,6 +56,18 @@ export class TauriGitSource implements DiffSource {
       repoPath: this.repoPath,
       limit,
     });
+  }
+
+  listBranches(): Promise<BranchInfo[]> {
+    return invoke<BranchInfo[]>('list_branches', { repoPath: this.repoPath });
+  }
+
+  listTags(): Promise<TagInfo[]> {
+    return invoke<TagInfo[]>('list_tags', { repoPath: this.repoPath });
+  }
+
+  listWorktrees(): Promise<WorktreeInfo[]> {
+    return invoke<WorktreeInfo[]>('list_worktrees', { repoPath: this.repoPath });
   }
 
   async readEntry(
@@ -105,5 +120,13 @@ export class TauriGitSource implements DiffSource {
 
   push(): Promise<string> {
     return invoke<string>('push', { repoPath: this.repoPath });
+  }
+
+  pull(): Promise<string> {
+    return invoke<string>('pull', { repoPath: this.repoPath });
+  }
+
+  revertCommit(sha: string): Promise<CommitInfo> {
+    return invoke<CommitInfo>('revert_commit', { repoPath: this.repoPath, sha });
   }
 }

@@ -29,4 +29,16 @@ describe('comparison revisions', () => {
     expect(baseRevision(c)).toEqual({ kind: 'empty' });
     expect(headRevision(c)).toEqual({ kind: 'ref', ref: 'root000' });
   });
+
+  it('a branch compares HEAD vs its tip (two-dot)', () => {
+    const c: Comparison = { kind: 'branch', name: 'feature', sha: 'feat123' };
+    expect(baseRevision(c)).toEqual({ kind: 'ref', ref: 'HEAD' });
+    expect(headRevision(c)).toEqual({ kind: 'ref', ref: 'feat123' });
+  });
+
+  it('a tag compares HEAD vs the commit it points at (two-dot)', () => {
+    const c: Comparison = { kind: 'tag', name: 'v1.0', sha: 'tag123' };
+    expect(baseRevision(c)).toEqual({ kind: 'ref', ref: 'HEAD' });
+    expect(headRevision(c)).toEqual({ kind: 'ref', ref: 'tag123' });
+  });
 });

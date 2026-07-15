@@ -40,6 +40,43 @@ pub struct CommitInfo {
     parent: Option<String>,
 }
 
+/// A branch, local or remote (mirrors the TS `BranchInfo`).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchInfo {
+    name: String,
+    is_head: bool,
+    is_remote: bool,
+    upstream: Option<String>,
+    sha: String,
+    short_sha: String,
+}
+
+/// A tag, lightweight or annotated (mirrors the TS `TagInfo`).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TagInfo {
+    name: String,
+    /// The commit the tag points at (peeled through an annotated tag object).
+    sha: String,
+    short_sha: String,
+    /// The annotated tag's own message; `None` for a lightweight tag.
+    message: Option<String>,
+}
+
+/// One entry from `git worktree list` (mirrors the TS `WorktreeInfo`).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeInfo {
+    path: String,
+    branch: Option<String>,
+    sha: Option<String>,
+    short_sha: Option<String>,
+    is_main: bool,
+    is_locked: bool,
+    is_prunable: bool,
+}
+
 /// Changed-file metadata (mirrors the TS `ChangedFile`).
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -676,16 +713,16 @@ pub fn commit(repo_path: String, message: String) -> Result<CommitInfo, String> 
     commit_info(&repo, oid)
 }
 
-/// Push the current branch (`git push`). Shells out to the system `git`
-/// binary rather than libgit2 so it reuses the user's own SSH keys,
-/// credential helpers, and any interactive auth exactly as their terminal
-/// git would — libgit2's own auth story is notoriously fragile by
-/// comparison.
-#[tauri::command]
-pub fn push(repo_path: String) -> Result<String, String> {
+/// Run a system `git` subcommand in `repo_path`, combining stdout+stderr and
+/// trimming the result. Shells out to the system `git` binary rather than
+/// libgit2 so operations like `push`/`pull`/`revert` reuse the user's own SSH
+/// keys, credential helpers, merge/rebase config, and any interactive auth
+/// exactly as their terminal git would — libgit2's own story for these is
+/// notoriously fragile by comparison.
+fn run_git(repo_path: &str, args: &[&str]) -> Result<String, String> {
     let output = Command::new("git")
-        .arg("push")
-        .current_dir(&repo_path)
+        .args(args)
+        .current_dir(repo_path)
         .output()
         .map_err(|e| e.to_string())?;
     let combined = format!(
@@ -700,6 +737,151 @@ pub fn push(repo_path: String) -> Result<String, String> {
     } else {
         Err(combined)
     }
+}
+
+/// Push the current branch (`git push`). See `run_git` for why this shells
+/// out rather than using libgit2.
+#[tauri::command]
+pub fn push(repo_path: String) -> Result<String, String> {
+    run_git(&repo_path, &["push"])
+}
+
+/// Pull the current branch (`git pull`), using whatever merge/rebase
+/// strategy the repo/user already has configured rather than forcing one.
+#[tauri::command]
+pub fn pull(repo_path: String) -> Result<String, String> {
+    run_git(&repo_path, &["pull"])
+}
+
+/// Revert one commit (`git revert --no-edit <sha>`), creating a new commit
+/// that undoes it. Returns the newly created commit.
+#[tauri::command]
+pub fn revert_commit(repo_path: String, sha: String) -> Result<CommitInfo, String> {
+    run_git(&repo_path, &["revert", "--no-edit", &sha])?;
+    let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
+    let oid = repo
+        .head()
+        .and_then(|h| h.peel_to_commit())
+        .map_err(|e| e.to_string())?
+        .id();
+    commit_info(&repo, oid)
+}
+
+/// List local and remote branches. Symbolic-only refs with no direct target
+/// (e.g. `origin/HEAD` pointing at `origin/main`) are skipped. Sorted with
+/// the checked-out branch first, then local branches, then remotes,
+/// alphabetically within each group.
+#[tauri::command]
+pub fn list_branches(repo_path: String) -> Result<Vec<BranchInfo>, String> {
+    let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for item in repo.branches(None).map_err(|e| e.to_string())? {
+        let (branch, kind) = item.map_err(|e| e.to_string())?;
+        let Some(target) = branch.get().target() else {
+            continue;
+        };
+        let name = match branch.name() {
+            Ok(Some(n)) => n.to_string(),
+            _ => continue,
+        };
+        let is_head = branch.is_head();
+        let is_remote = kind == git2::BranchType::Remote;
+        let upstream = branch
+            .upstream()
+            .ok()
+            .and_then(|u| u.name().ok().flatten().map(str::to_string));
+        let sha = target.to_string();
+        out.push(BranchInfo {
+            name,
+            is_head,
+            is_remote,
+            upstream,
+            short_sha: sha.chars().take(7).collect(),
+            sha,
+        });
+    }
+    out.sort_by(|a, b| {
+        (!a.is_head, a.is_remote, a.name.as_str()).cmp(&(!b.is_head, b.is_remote, b.name.as_str()))
+    });
+    Ok(out)
+}
+
+/// List tags, both lightweight and annotated. `git2::Repository::tag_names`
+/// returns names in alphabetical order, which we keep as-is (same policy as
+/// `list_branches`: no attempt at semver-aware ordering).
+#[tauri::command]
+pub fn list_tags(repo_path: String) -> Result<Vec<TagInfo>, String> {
+    let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
+    let names = repo.tag_names(None).map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for name in names.iter().flatten() {
+        let Ok(obj) = repo.revparse_single(name) else {
+            continue;
+        };
+        // Annotated tags peel to the commit they point at; lightweight tags
+        // already point directly at it. Tags on non-commit objects (rare —
+        // a tagged blob/tree) are skipped since there's nothing to diff.
+        let Ok(commit) = obj.peel_to_commit() else {
+            continue;
+        };
+        let sha = commit.id().to_string();
+        let message = obj.as_tag().and_then(|t| t.message()).map(str::to_string);
+        out.push(TagInfo {
+            name: name.to_string(),
+            short_sha: sha.chars().take(7).collect(),
+            sha,
+            message,
+        });
+    }
+    Ok(out)
+}
+
+/// List worktrees (`git worktree list --porcelain`). The main worktree is
+/// always the first entry in porcelain output. Shells out (see `run_git`)
+/// rather than using git2's worktree API, which doesn't expose lock/prune
+/// state as directly.
+#[tauri::command]
+pub fn list_worktrees(repo_path: String) -> Result<Vec<WorktreeInfo>, String> {
+    let raw = run_git(&repo_path, &["worktree", "list", "--porcelain"])?;
+    let mut out = Vec::new();
+    let mut cur: Option<WorktreeInfo> = None;
+    for line in raw.lines() {
+        if let Some(path) = line.strip_prefix("worktree ") {
+            if let Some(w) = cur.take() {
+                out.push(w);
+            }
+            cur = Some(WorktreeInfo {
+                path: path.to_string(),
+                branch: None,
+                sha: None,
+                short_sha: None,
+                is_main: out.is_empty(),
+                is_locked: false,
+                is_prunable: false,
+            });
+        } else if let Some(sha) = line.strip_prefix("HEAD ") {
+            if let Some(w) = cur.as_mut() {
+                w.short_sha = Some(sha.chars().take(7).collect());
+                w.sha = Some(sha.to_string());
+            }
+        } else if let Some(branch_ref) = line.strip_prefix("branch ") {
+            if let Some(w) = cur.as_mut() {
+                w.branch = Some(branch_ref.trim_start_matches("refs/heads/").to_string());
+            }
+        } else if line.starts_with("locked") {
+            if let Some(w) = cur.as_mut() {
+                w.is_locked = true;
+            }
+        } else if line.starts_with("prunable") {
+            if let Some(w) = cur.as_mut() {
+                w.is_prunable = true;
+            }
+        }
+    }
+    if let Some(w) = cur.take() {
+        out.push(w);
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -1251,6 +1433,97 @@ mod tests {
         .unwrap();
         assert!(staged.is_empty());
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_branches_marks_current_branch_as_head() {
+        let (dir, repo) = init_repo_with_commit("branches");
+        let path = dir.to_str().unwrap().to_string();
+        let head_name = repo.head().unwrap().shorthand().unwrap().to_string();
+
+        let branches = list_branches(path).unwrap();
+        assert_eq!(branches.len(), 1);
+        assert_eq!(branches[0].name, head_name);
+        assert!(branches[0].is_head);
+        assert!(!branches[0].is_remote);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_tags_lists_lightweight_and_annotated() {
+        let (dir, repo) = init_repo_with_commit("tags");
+        let path = dir.to_str().unwrap().to_string();
+        let head_oid = repo.head().unwrap().target().unwrap();
+        let head_obj = repo.find_object(head_oid, None).unwrap();
+
+        repo.tag_lightweight("v1", &head_obj, false).unwrap();
+        let sig = git2::Signature::now("t", "t@t").unwrap();
+        repo.tag("v2-annotated", &head_obj, &sig, "release notes", false)
+            .unwrap();
+
+        let tags = list_tags(path).unwrap();
+        assert_eq!(tags.len(), 2);
+
+        let v1 = tags.iter().find(|t| t.name == "v1").unwrap();
+        assert_eq!(v1.sha, head_oid.to_string());
+        assert!(v1.message.is_none());
+
+        let v2 = tags.iter().find(|t| t.name == "v2-annotated").unwrap();
+        assert_eq!(v2.sha, head_oid.to_string());
+        assert_eq!(v2.message.as_deref(), Some("release notes"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_worktrees_includes_main_worktree() {
+        let (dir, _repo) = init_repo_with_commit("worktrees");
+        let path = dir.to_str().unwrap().to_string();
+
+        let worktrees = list_worktrees(path).unwrap();
+        assert_eq!(worktrees.len(), 1);
+        assert!(worktrees[0].is_main);
+        assert_eq!(
+            std::fs::canonicalize(&worktrees[0].path).unwrap(),
+            std::fs::canonicalize(&dir).unwrap()
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn revert_commit_restores_previous_content() {
+        let (dir, repo) = init_repo_with_commit("revert");
+        let path = dir.to_str().unwrap().to_string();
+        {
+            let mut config = repo.config().unwrap();
+            config.set_str("user.name", "Test User").unwrap();
+            config.set_str("user.email", "test@example.com").unwrap();
+        }
+
+        std::fs::write(dir.join("committed.txt"), b"one\nTWO\nthree\n").unwrap();
+        stage_paths(path.clone(), vec!["committed.txt".into()]).unwrap();
+        let second = commit(path.clone(), "change two".to_string()).unwrap();
+
+        let reverted = revert_commit(path.clone(), second.sha.clone()).unwrap();
+        assert!(reverted.summary.starts_with("Revert"));
+        assert_eq!(reverted.parent.as_deref(), Some(second.sha.as_str()));
+        assert_eq!(
+            std::fs::read(dir.join("committed.txt")).unwrap(),
+            b"one\ntwo\nthree\n"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pull_without_remote_returns_error() {
+        let (dir, _repo) = init_repo_with_commit("pull-no-remote");
+        let path = dir.to_str().unwrap().to_string();
+        let err = pull(path).unwrap_err();
+        assert!(!err.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

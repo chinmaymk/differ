@@ -273,6 +273,39 @@ export interface CommitInfo {
   parent: string | null;
 }
 
+/** A branch, local or remote. */
+export interface BranchInfo {
+  name: string;
+  isHead: boolean;
+  isRemote: boolean;
+  /** Upstream tracking ref name (e.g. "origin/main"), if configured. */
+  upstream: string | null;
+  sha: string;
+  shortSha: string;
+}
+
+/** A tag, lightweight or annotated. */
+export interface TagInfo {
+  name: string;
+  /** The commit the tag points at (peeled through an annotated tag object). */
+  sha: string;
+  shortSha: string;
+  /** The annotated tag's own message; null for a lightweight tag. */
+  message: string | null;
+}
+
+/** One entry from `git worktree list`. */
+export interface WorktreeInfo {
+  path: string;
+  /** Branch checked out there, or null when detached. */
+  branch: string | null;
+  sha: string | null;
+  shortSha: string | null;
+  isMain: boolean;
+  isLocked: boolean;
+  isPrunable: boolean;
+}
+
 /**
  * A single hunk's exact content, sent verbatim to the backend for staging.
  * Deliberately the same shape as `Hunk` (minus render-only fields) so the
@@ -311,6 +344,12 @@ export interface DiffSource {
   ): Promise<DiffEntry>;
   /** List recent commits, if the source is backed by history (git). */
   listCommits?(limit: number): Promise<CommitInfo[]>;
+  /** List local and remote branches. */
+  listBranches?(): Promise<BranchInfo[]>;
+  /** List tags (lightweight and annotated). */
+  listTags?(): Promise<TagInfo[]>;
+  /** List worktrees (the main one plus any linked ones). */
+  listWorktrees?(): Promise<WorktreeInfo[]>;
 
   // -- Write operations, present only for sources backed by a real local
   // repo (desktop). Absent entirely for read-only sources (demo/paste
@@ -331,4 +370,8 @@ export interface DiffSource {
   commit?(message: string): Promise<CommitInfo>;
   /** Push the current branch. Resolves with a status message. */
   push?(): Promise<string>;
+  /** Pull the current branch. Resolves with a status message. */
+  pull?(): Promise<string>;
+  /** Revert one commit, creating a new commit that undoes it. */
+  revertCommit?(sha: string): Promise<CommitInfo>;
 }

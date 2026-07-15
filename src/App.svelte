@@ -1,5 +1,6 @@
 <script lang="ts">
   import type {
+    BranchInfo,
     ChangedFile,
     CommitInfo,
     DiffSource,
@@ -7,6 +8,8 @@
     Hunk,
     HunkMode,
     Revision,
+    TagInfo,
+    WorktreeInfo,
   } from './lib/engine/model';
   import { EngineClient } from './lib/worker/client';
   import { sampleSource } from './lib/sources/samples';
@@ -33,6 +36,9 @@
   let source = $state<DiffSource | null>(null);
   let comparison = $state<Comparison>({ kind: 'worktree' });
   let commits = $state<CommitInfo[]>([]);
+  let branches = $state<BranchInfo[]>([]);
+  let tags = $state<TagInfo[]>([]);
+  let worktrees = $state<WorktreeInfo[]>([]);
   let recentRepos = $state<RecentRepo[]>(getRecentRepos());
   let stagedFiles = $state<ChangedFile[]>([]);
   let unstagedFiles = $state<ChangedFile[]>([]);
@@ -45,7 +51,12 @@
   let errorMsg = $state('');
   let viewed = $state<Set<string>>(new Set());
 
-  const canBrowseHistory = $derived(!!source?.listCommits);
+  const canBrowseHistory = $derived(
+    !!source?.listCommits ||
+      !!source?.listBranches ||
+      !!source?.listTags ||
+      !!source?.listWorktrees,
+  );
   const canStage = $derived(!!source?.stagePaths && comparison.kind === 'worktree');
 
   // --- Persisted UI preferences ---------------------------------------------
@@ -269,6 +280,23 @@
     return () => clearInterval(id);
   });
 
+  // Re-fetch the comparison picker's commit/branch/tag lists — separate from
+  // `refresh()` (working-tree diff) since commit/revert/pull move HEAD,
+  // branch tips, and tags without necessarily changing the working tree.
+  async function refreshHistory(): Promise<void> {
+    if (!source) return;
+    const src = source;
+    src.listCommits?.(80)
+      .then((c) => (commits = c))
+      .catch(() => {});
+    src.listBranches?.()
+      .then((b) => (branches = b))
+      .catch(() => {});
+    src.listTags?.()
+      .then((t) => (tags = t))
+      .catch(() => {});
+  }
+
   // --- Loading -------------------------------------------------------------
   async function reload(): Promise<void> {
     if (!source) return;
@@ -314,15 +342,29 @@
     source = src;
     comparison = { kind: 'worktree' };
     commits = [];
+    branches = [];
+    tags = [];
+    worktrees = [];
     autoRefresh = false;
     clearPushState();
+    clearPullState();
     if (recentPath) {
       addRecentRepo(recentPath);
       recentRepos = getRecentRepos();
     }
-    // Load history for the commit picker (best-effort, non-blocking).
+    // Load history/branches/tags/worktrees for the comparison picker
+    // (best-effort, non-blocking — the diff view shouldn't wait on these).
     src.listCommits?.(80)
       .then((c) => (commits = c))
+      .catch(() => {});
+    src.listBranches?.()
+      .then((b) => (branches = b))
+      .catch(() => {});
+    src.listTags?.()
+      .then((t) => (tags = t))
+      .catch(() => {});
+    src.listWorktrees?.()
+      .then((w) => (worktrees = w))
       .catch(() => {});
     await reload();
   }
@@ -374,8 +416,12 @@
     errors = {};
     selected = null;
     commits = [];
+    branches = [];
+    tags = [];
+    worktrees = [];
     recentRepos = getRecentRepos();
     clearPushState();
+    clearPullState();
   }
 
   function select(section: SectionKey, path: string) {
@@ -468,6 +514,7 @@
       // commit is unpushed, so the button shouldn't still read "Pushed".
       clearPushState();
       await refresh();
+      await refreshHistory();
       return true;
     } catch (e) {
       actionError = e instanceof Error ? e.message : String(e);
@@ -475,6 +522,20 @@
     } finally {
       committing = false;
     }
+  }
+
+  async function revertCommit(sha: string): Promise<void> {
+    if (!source?.revertCommit) return;
+    if (!window.confirm(`Revert commit ${sha.slice(0, 7)}? This creates a new commit undoing its changes.`)) {
+      return;
+    }
+    const src = source;
+    await runAction(() => src.revertCommit!(sha));
+    await refreshHistory();
+  }
+
+  function openWorktree(path: string) {
+    void openRepoPath(path);
   }
 
   async function doPush(): Promise<void> {
@@ -492,6 +553,41 @@
         pushError = null;
         pushResetTimer = null;
       }, PUSH_STATE_LINGER_MS);
+    }
+  }
+
+  let pulling = $state(false);
+  let pullResult = $state<string | null>(null);
+  let pullError = $state<string | null>(null);
+  const PULL_STATE_LINGER_MS = 4000;
+  let pullResetTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearPullState() {
+    if (pullResetTimer) {
+      clearTimeout(pullResetTimer);
+      pullResetTimer = null;
+    }
+    pullResult = null;
+    pullError = null;
+  }
+
+  async function doPull(): Promise<void> {
+    if (!source?.pull || pulling) return;
+    clearPullState();
+    pulling = true;
+    try {
+      pullResult = await source.pull();
+      await refresh();
+      await refreshHistory();
+    } catch (e) {
+      pullError = e instanceof Error ? e.message : String(e);
+    } finally {
+      pulling = false;
+      pullResetTimer = setTimeout(() => {
+        pullResult = null;
+        pullError = null;
+        pullResetTimer = null;
+      }, PULL_STATE_LINGER_MS);
     }
   }
 
@@ -523,6 +619,26 @@
       {/if}
       {#if isTauri}
         <button onclick={pickRepo}>Open…</button>
+      {/if}
+      {#if source?.pull}
+        <button
+          class="pull"
+          class:success={!pulling && pullResult !== null}
+          class:error={!pulling && pullError !== null}
+          disabled={pulling}
+          onclick={doPull}
+          title={pullError ?? pullResult ?? 'Pull latest changes from remote'}
+        >
+          {#if pulling}
+            <span class="spinner" aria-hidden="true"></span> Pulling…
+          {:else if pullError !== null}
+            ✗ Pull failed
+          {:else if pullResult !== null}
+            ✓ Pulled
+          {:else}
+            Pull
+          {/if}
+        </button>
       {/if}
       <div class="fontstepper" title="Diff font size">
         <button onclick={() => bumpFont(-1)} aria-label="Smaller font">A−</button>
@@ -565,7 +681,18 @@
     >
       <div class="sidebar">
         {#if canBrowseHistory}
-          <ComparisonBar {comparison} {commits} onSelect={setComparison} />
+          <ComparisonBar
+            {comparison}
+            {commits}
+            {branches}
+            {tags}
+            {worktrees}
+            canRevert={!!source?.revertCommit}
+            currentPath={source?.label()}
+            onSelect={setComparison}
+            onOpenWorktree={openWorktree}
+            onRevertCommit={(sha) => void revertCommit(sha)}
+          />
         {/if}
         {#if actionError}
           <div class="action-error">
@@ -674,6 +801,32 @@
   }
   .src-label:hover {
     color: var(--accent);
+  }
+  .pull {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .pull.success {
+    border-color: var(--add-fg);
+    color: var(--add-fg);
+  }
+  .pull.error {
+    border-color: var(--del-fg);
+    color: var(--del-fg);
+  }
+  .pull .spinner {
+    width: 9px;
+    height: 9px;
+    border: 1.5px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
   .fontstepper {
     display: flex;
