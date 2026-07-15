@@ -29,8 +29,11 @@
   import FileDiffView from './lib/components/FileDiffView.svelte';
   import Welcome from './lib/components/Welcome.svelte';
   import ComparisonBar from './lib/components/ComparisonBar.svelte';
+  import SettingsDialog from './lib/components/Settings.svelte';
 
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+  const apiBase = import.meta.env.VITE_API_BASE;
+  const isHeadless = !isTauri && !!apiBase;
   const client = new EngineClient();
 
   let source = $state<DiffSource | null>(null);
@@ -63,14 +66,25 @@
   const SETTINGS_KEY = 'dv-settings';
   const MIN_FONT = 10;
   const MAX_FONT = 24;
+  const DEFAULT_REFRESH_MS = 0; // 0 = off
+  const REFRESH_INTERVALS = [0, 1000, 2000, 5000, 10000];
   interface Settings {
     viewMode: 'unified' | 'split';
     wrap: boolean;
     showSemantic: boolean;
     fontSize: number;
+    theme: 'system' | 'light' | 'dark';
+    autoRefreshInterval: number;
   }
   function loadSettings(): Settings {
-    const d: Settings = { viewMode: 'unified', wrap: true, showSemantic: true, fontSize: 14 };
+    const d: Settings = {
+      viewMode: 'unified',
+      wrap: true,
+      showSemantic: true,
+      fontSize: 14,
+      theme: 'system',
+      autoRefreshInterval: DEFAULT_REFRESH_MS,
+    };
     try {
       const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}');
       return {
@@ -81,6 +95,10 @@
           typeof s.fontSize === 'number' && s.fontSize >= MIN_FONT && s.fontSize <= MAX_FONT
             ? s.fontSize
             : d.fontSize,
+        theme: s.theme === 'light' || s.theme === 'dark' ? s.theme : d.theme,
+        autoRefreshInterval: REFRESH_INTERVALS.includes(s.autoRefreshInterval)
+          ? s.autoRefreshInterval
+          : d.autoRefreshInterval,
       };
     } catch {
       return d;
@@ -91,15 +109,18 @@
   let wrap = $state(initial.wrap);
   let showSemantic = $state(initial.showSemantic);
   let fontSize = $state(initial.fontSize);
-  let autoRefresh = $state(false); // intentionally not persisted (live action)
+  let theme = $state(initial.theme);
+  let autoRefreshInterval = $state(initial.autoRefreshInterval);
+  let settingsOpen = $state(false);
 
   $effect(() => {
-    const s: Settings = { viewMode, wrap, showSemantic, fontSize };
+    const s: Settings = { viewMode, wrap, showSemantic, fontSize, theme, autoRefreshInterval };
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
   });
-  function bumpFont(delta: number) {
-    fontSize = Math.max(MIN_FONT, Math.min(MAX_FONT, fontSize + delta));
-  }
+  $effect(() => {
+    if (theme === 'system') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = theme;
+  });
 
   // --- Resizable file-tree sidebar ------------------------------------------
   const FL_KEY = 'dv-filelist-width';
@@ -275,8 +296,8 @@
     }
   }
   $effect(() => {
-    if (!autoRefresh || !source) return;
-    const id = setInterval(() => void refresh(), 2000);
+    if (autoRefreshInterval <= 0 || !source) return;
+    const id = setInterval(() => void refresh(), autoRefreshInterval);
     return () => clearInterval(id);
   });
 
@@ -345,7 +366,6 @@
     branches = [];
     tags = [];
     worktrees = [];
-    autoRefresh = false;
     clearPushState();
     clearPullState();
     if (recentPath) {
@@ -372,6 +392,28 @@
   async function openRepoPath(path: string): Promise<void> {
     const { TauriGitSource } = await import('./lib/sources/tauri-git');
     await openSource(new TauriGitSource(path), path);
+  }
+
+  async function openHeadlessSource(): Promise<void> {
+    if (!apiBase) return;
+    try {
+      const { HttpGitSource } = await import('./lib/sources/http-git');
+      await openSource(new HttpGitSource(apiBase));
+    } catch (e) {
+      status = 'error';
+      errorMsg = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  async function openHeadlessSource(): Promise<void> {
+    if (!apiBase) return;
+    try {
+      const { HttpGitSource } = await import('./lib/sources/http-git');
+      await openSource(new HttpGitSource(apiBase));
+    } catch (e) {
+      status = 'error';
+      errorMsg = e instanceof Error ? e.message : String(e);
+    }
   }
 
   async function pickRepo(): Promise<void> {
@@ -591,11 +633,17 @@
     }
   }
 
-  // In the desktop app, auto-open the repo we were launched from.
+  // In the desktop app, auto-open the repo we were launched from. In
+  // headless mode there's nothing to pick — the server's repo is fixed at
+  // startup — so just auto-connect to it.
   let didAutoOpen = false;
   $effect(() => {
-    if (!isTauri || didAutoOpen) return;
+    if (didAutoOpen || (!isTauri && !isHeadless)) return;
     didAutoOpen = true;
+    if (isHeadless) {
+      void openHeadlessSource();
+      return;
+    }
     void (async () => {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
@@ -640,21 +688,7 @@
           {/if}
         </button>
       {/if}
-      <div class="fontstepper" title="Diff font size">
-        <button onclick={() => bumpFont(-1)} aria-label="Smaller font">A−</button>
-        <span class="fs">{fontSize}</span>
-        <button onclick={() => bumpFont(1)} aria-label="Larger font">A+</button>
-      </div>
-      {#if source && comparison.kind === 'worktree'}
-        <button
-          class="live"
-          class:on={autoRefresh}
-          onclick={() => (autoRefresh = !autoRefresh)}
-          title="Re-scan for changes every 2 seconds"
-        >
-          <span class="dot"></span>{autoRefresh ? 'Live' : 'Auto-refresh'}
-        </button>
-      {/if}
+      <button class="gear" onclick={() => (settingsOpen = true)} aria-label="Settings" title="Settings">⚙</button>
     </div>
   </header>
 
@@ -737,8 +771,6 @@
             {viewMode}
             {wrap}
             {showSemantic}
-            onViewMode={(m) => (viewMode = m)}
-            onWrap={(w) => (wrap = w)}
             onToggleSemantic={() => (showSemantic = !showSemantic)}
             section={canStage ? (selected?.section ?? null) : null}
             {onHunkAction}
@@ -754,6 +786,26 @@
     </div>
   {/if}
 </div>
+
+{#if settingsOpen}
+  <SettingsDialog
+    {theme}
+    {viewMode}
+    {wrap}
+    {showSemantic}
+    {fontSize}
+    minFontSize={MIN_FONT}
+    maxFontSize={MAX_FONT}
+    {autoRefreshInterval}
+    onTheme={(t) => (theme = t)}
+    onViewMode={(m) => (viewMode = m)}
+    onWrap={(w) => (wrap = w)}
+    onShowSemantic={(s) => (showSemantic = s)}
+    onFontSize={(n) => (fontSize = n)}
+    onAutoRefreshInterval={(ms) => (autoRefreshInterval = ms)}
+    onClose={() => (settingsOpen = false)}
+  />
+{/if}
 
 <style>
   .app {
@@ -828,51 +880,10 @@
       transform: rotate(360deg);
     }
   }
-  .fontstepper {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    overflow: hidden;
-  }
-  .fontstepper button {
-    border: none;
-    border-radius: 0;
-    background: var(--bg);
-    padding: 3px 8px;
-    font-size: 12px;
-  }
-  .fontstepper .fs {
-    min-width: 2ch;
-    text-align: center;
-    font-size: 11px;
-    color: var(--fg-muted);
-    font-family: var(--mono);
-  }
-  .live {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-  }
-  .live .dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--fg-muted);
-  }
-  .live.on {
-    border-color: var(--add-fg);
-    color: var(--add-fg);
-  }
-  .live.on .dot {
-    background: var(--add-fg);
-    animation: pulse 1.6s ease-in-out infinite;
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
+  .gear {
+    padding: 4px 8px;
+    font-size: 14px;
+    line-height: 1;
   }
   button {
     padding: 4px 12px;

@@ -56,6 +56,60 @@
   }
 }
 
+/* Manual theme override (Settings > Appearance) — higher specificity than
+   the plain `:root` selector above so it wins regardless of OS preference. */
+:root[data-theme='light'] {
+  --bg: #ffffff;
+  --bg-subtle: #f6f8fa;
+  --bg-inset: #eef1f4;
+  --border: #d0d7de;
+  --fg: #1f2328;
+  --fg-muted: #656d76;
+  --accent: #0969da;
+  --add-bg: #e6ffec;
+  --add-fg: #1a7f37;
+  --add-inline: #abf2bc;
+  --del-bg: #ffebe9;
+  --del-fg: #cf222e;
+  --del-inline: #ffc1bd;
+  --mod-fg: #9a6700;
+  --move-fg: #8250df;
+  --syn-keyword: #cf222e;
+  --syn-string: #0a3069;
+  --syn-number: #0550ae;
+  --syn-comment: #6e7781;
+  --syn-type: #953800;
+  --syn-constant: #0550ae;
+  --syn-function: #6639ba;
+  --syn-property: #0550ae;
+}
+
+:root[data-theme='dark'] {
+  --bg: #0d1117;
+  --bg-subtle: #161b22;
+  --bg-inset: #010409;
+  --border: #30363d;
+  --fg: #e6edf3;
+  --fg-muted: #7d8590;
+  --accent: #2f81f7;
+  --add-bg: #12261e;
+  --add-fg: #3fb950;
+  --add-inline: #1f6f34;
+  --del-bg: #25171c;
+  --del-fg: #f85149;
+  --del-inline: #7d2b2b;
+  --mod-fg: #d29922;
+  --move-fg: #a371f7;
+  --syn-keyword: #ff7b72;
+  --syn-string: #a5d6ff;
+  --syn-number: #79c0ff;
+  --syn-comment: #8b949e;
+  --syn-type: #ffa657;
+  --syn-constant: #79c0ff;
+  --syn-function: #d2a8ff;
+  --syn-property: #79c0ff;
+}
+
 * {
   box-sizing: border-box;
 }

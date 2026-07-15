@@ -12,8 +12,6 @@
     viewMode: 'unified' | 'split';
     wrap: boolean;
     showSemantic: boolean;
-    onViewMode: (m: 'unified' | 'split') => void;
-    onWrap: (w: boolean) => void;
     onToggleSemantic: () => void;
     section?: SectionKey | null;
     onHunkAction?: (hunk: Hunk, mode: HunkMode) => void;
@@ -23,8 +21,6 @@
     viewMode,
     wrap,
     showSemantic,
-    onViewMode,
-    onWrap,
     onToggleSemantic,
     section = null,
     onHunkAction,
@@ -125,16 +121,9 @@
         <span class="from">from {file.oldPath}</span>
       {/if}
 
-      {#if !isImage}
+      {#if !isImage && hasSemantic}
         <div class="toolbar">
-          {#if hasSemantic}
-            <button class="toggle" class:on={showSemantic} onclick={onToggleSemantic}>Semantic</button>
-          {/if}
-          <div class="seg">
-            <button class:on={viewMode === 'unified'} onclick={() => onViewMode('unified')}>Unified</button>
-            <button class:on={viewMode === 'split'} onclick={() => onViewMode('split')}>Split</button>
-          </div>
-          <button class="toggle" class:on={wrap} onclick={() => onWrap(!wrap)} title="Wrap long lines">Wrap</button>
+          <button class="toggle" class:on={showSemantic} onclick={onToggleSemantic}>Semantic</button>
         </div>
       {/if}
     </div>
@@ -248,24 +237,6 @@
     display: flex;
     gap: 8px;
     align-items: center;
-  }
-  .seg {
-    display: flex;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    overflow: hidden;
-  }
-  .seg button {
-    border: none;
-    background: var(--bg);
-    color: var(--fg-muted);
-    padding: 3px 10px;
-    cursor: pointer;
-    font-size: 11.5px;
-  }
-  .seg button.on {
-    background: var(--accent);
-    color: #fff;
   }
   .toggle {
     border: 1px solid var(--border);
