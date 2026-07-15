@@ -315,6 +315,7 @@
     comparison = { kind: 'worktree' };
     commits = [];
     autoRefresh = false;
+    clearPushState();
     if (recentPath) {
       addRecentRepo(recentPath);
       recentRepos = getRecentRepos();
@@ -374,6 +375,7 @@
     selected = null;
     commits = [];
     recentRepos = getRecentRepos();
+    clearPushState();
   }
 
   function select(section: SectionKey, path: string) {
@@ -441,13 +443,30 @@
   let pushing = $state(false);
   let pushResult = $state<string | null>(null);
   let pushError = $state<string | null>(null);
+  // How long a finished push's success/error state lingers on the button
+  // before it settles back to a plain "Push" — long enough to register,
+  // short enough not to look stuck.
+  const PUSH_STATE_LINGER_MS = 4000;
+  let pushResetTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearPushState() {
+    if (pushResetTimer) {
+      clearTimeout(pushResetTimer);
+      pushResetTimer = null;
+    }
+    pushResult = null;
+    pushError = null;
+  }
 
   async function commitStaged(message: string): Promise<boolean> {
-    if (!source?.commit || committing) return false;
+    if (!source?.commit || committing || pushing) return false;
     committing = true;
     actionError = null;
     try {
       await source.commit(message);
+      // A prior push's success/error no longer describes reality — this
+      // commit is unpushed, so the button shouldn't still read "Pushed".
+      clearPushState();
       await refresh();
       return true;
     } catch (e) {
@@ -459,16 +478,20 @@
   }
 
   async function doPush(): Promise<void> {
-    if (!source?.push || pushing) return;
+    if (!source?.push || pushing || committing) return;
+    clearPushState();
     pushing = true;
-    pushResult = null;
-    pushError = null;
     try {
       pushResult = await source.push();
     } catch (e) {
       pushError = e instanceof Error ? e.message : String(e);
     } finally {
       pushing = false;
+      pushResetTimer = setTimeout(() => {
+        pushResult = null;
+        pushError = null;
+        pushResetTimer = null;
+      }, PUSH_STATE_LINGER_MS);
     }
   }
 

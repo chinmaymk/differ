@@ -18,11 +18,21 @@
     if (ok) message = '';
   }
 
-  // Reflects on the button itself; the message below stays until the next
-  // push attempt resets it (see App.svelte's `doPush`).
+  // Commit + push in one click: staged changes present → commit them, then
+  // push; nothing staged → just push whatever's already committed.
+  async function commitAndPush() {
+    if (stagedCount > 0) {
+      const ok = await onCommit(message);
+      if (!ok) return; // commit failed; error surfaces via the app's action banner
+      message = '';
+    }
+    await onPush();
+  }
+
   const pushState = $derived(
     pushing ? 'pushing' : pushError ? 'error' : pushResult !== null ? 'success' : 'idle',
   );
+  const busy = $derived(committing || pushing);
 </script>
 
 <div class="commit">
@@ -30,7 +40,7 @@
     bind:value={message}
     placeholder="Commit message"
     rows="2"
-    disabled={committing}
+    disabled={busy}
     onkeydown={(e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
@@ -41,7 +51,7 @@
   <div class="actions">
     <button
       class="commitbtn"
-      disabled={stagedCount === 0 || !message.trim() || committing}
+      disabled={stagedCount === 0 || !message.trim() || busy}
       onclick={submit}
     >
       {committing ? 'Committing…' : `Commit ${stagedCount} file${stagedCount === 1 ? '' : 's'}`}
@@ -50,15 +60,19 @@
       class="pushbtn"
       class:success={pushState === 'success'}
       class:error={pushState === 'error'}
-      disabled={pushing}
-      onclick={onPush}
+      disabled={busy || (stagedCount > 0 && !message.trim())}
+      onclick={commitAndPush}
     >
-      {#if pushState === 'pushing'}
+      {#if committing}
+        <span class="spinner" aria-hidden="true"></span> Committing…
+      {:else if pushState === 'pushing'}
         <span class="spinner" aria-hidden="true"></span> Pushing…
       {:else if pushState === 'success'}
         <span aria-hidden="true">✓</span> Pushed
       {:else if pushState === 'error'}
         <span aria-hidden="true">✗</span> Push failed
+      {:else if stagedCount > 0}
+        Commit &amp; push
       {:else}
         Push
       {/if}
