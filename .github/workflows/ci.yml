@@ -36,6 +36,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Caches downloaded .deb archives so apt skips re-fetching them on a
+      # hit; apt-get update still runs every time so package versions never
+      # drift out of sync with the mirror (a prior attempt swapped this for
+      # a third-party action that cached the *install* itself and silently
+      # reported success on partial/failed installs when the mirror 404'd a
+      # stale package version — apt-get here fails loudly instead).
+      - name: Cache apt archives
+        if: matrix.platform == 'ubuntu-22.04'
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives/*.deb
+          key: apt-${{ matrix.platform }}-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: apt-${{ matrix.platform }}-
+
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -57,6 +71,15 @@ jobs:
           node-version: 20
           cache: npm
 
+      # Swatinem/rust-cache below only caches ~/.cargo and target/, not
+      # ~/.rustup — without this, every run re-downloads the ~200MB stable
+      # toolchain from scratch even though nothing about it changed.
+      - name: Cache Rust toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.rustup
+          key: rustup-${{ matrix.platform }}-stable
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
@@ -74,5 +97,12 @@ jobs:
       # incremental) is reserved for the tag-triggered release build, where
       # binary size matters — using it here would defeat rust-cache on every
       # PR push and make incremental builds slow for no benefit.
+      #
+      # On Linux, restrict to the .deb bundle: the debug binary carries full
+      # webkit2gtk/tao debug symbols, and `tauri.conf.json`'s targets:"all"
+      # otherwise also builds .rpm (xz-compresses that debug binary — ~12
+      # minutes on its own) and .appimage (uncached network downloads of
+      # linuxdeploy tooling). One fast bundle format is enough to prove the
+      # bundling pipeline works; the release build still produces all three.
       - name: Build app (frontend + Tauri bundle)
-        run: npm run tauri build -- --debug
+        run: npm run tauri build -- --debug ${{ matrix.platform == 'ubuntu-22.04' && '--bundles deb' || '' }}
