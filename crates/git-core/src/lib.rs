@@ -79,7 +79,7 @@ pub struct WorktreeInfo {
 }
 
 /// Changed-file metadata (mirrors the TS `ChangedFile`).
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ChangedFile {
     path: String,
@@ -304,9 +304,14 @@ pub fn list_changes(
         }
     };
 
-    // Rename/copy detection over the assembled deltas.
+    // Rename/copy detection over the assembled deltas. `for_untracked` is
+    // required for a pure-worktree rename (old path deleted, new path never
+    // staged — e.g. the "unstaged" comparison's diff_index_to_workdir) to
+    // pair up at all: without it, an untracked new path is never considered
+    // a rename target, so it and the deleted old path show as two unrelated
+    // added/removed entries instead of one renamed entry.
     let mut find = DiffFindOptions::new();
-    find.renames(true).copies(true);
+    find.renames(true).copies(true).for_untracked(true);
     diff.find_similar(Some(&mut find)).map_err(|e| e.to_string())?;
 
     let mut out = Vec::new();
@@ -1085,6 +1090,35 @@ mod tests {
         .unwrap();
         assert_eq!(staged.len(), 1);
         assert_eq!(staged[0].path, "committed.txt");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A pure worktree-only rename (never staged) must still show as one
+    /// `renamed` entry, not a separate removed+added pair — regression test
+    /// for the `for_untracked` find-similar flag (see `list_changes`).
+    #[test]
+    fn unstaged_rename_is_detected() {
+        let (dir, _repo) = init_repo_with_commit("unstaged-rename");
+        let path = dir.to_str().unwrap().to_string();
+
+        std::fs::write(dir.join("old-name.txt"), b"alpha\nbeta\ngamma\n").unwrap();
+        stage_paths(path.clone(), vec!["old-name.txt".into()]).unwrap();
+        commit(path.clone(), "add old-name.txt".into()).unwrap();
+
+        std::fs::rename(dir.join("old-name.txt"), dir.join("new-name.txt")).unwrap();
+
+        let changes = list_changes(
+            path,
+            Revision { kind: "index".into(), r#ref: None },
+            Revision { kind: "worktree".into(), r#ref: None },
+        )
+        .unwrap();
+
+        assert_eq!(changes.len(), 1, "expected a single renamed entry, got {changes:?}");
+        assert_eq!(changes[0].status, "renamed");
+        assert_eq!(changes[0].path, "new-name.txt");
+        assert_eq!(changes[0].old_path.as_deref(), Some("old-name.txt"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -18,3 +18,5 @@ src-tauri/gen/
 # Test/screenshot artifacts (root only — keep src-tauri/icons/*.png)
 .playwright-mcp/
 /*.png
+/test-results/
+/playwright-report/

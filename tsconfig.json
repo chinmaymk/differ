@@ -16,6 +16,6 @@
     "lib": ["ESNext", "DOM", "DOM.Iterable", "WebWorker"],
     "types": ["vite/client", "vitest/globals"]
   },
-  "include": ["src/**/*.ts", "src/**/*.svelte", "scripts/**/*.mjs"],
+  "include": ["src/**/*.ts", "src/**/*.svelte", "scripts/**/*.mjs", "e2e/**/*.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

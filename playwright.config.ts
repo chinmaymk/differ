@@ -10,6 +10,11 @@ const VITE_PORT = 5183;
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
+  // The whole suite runs against ONE shared fixture repo (see
+  // e2e/fixtures/build-fixture.mjs), mutated in a deliberate progression
+  // across the numbered spec files (pull, then stage/commit, then push) —
+  // workers:1 keeps that strictly sequential, not just per-file.
+  workers: 1,
   webServer: [
     {
       command: 'node e2e/scripts/start-headless-server.mjs',
