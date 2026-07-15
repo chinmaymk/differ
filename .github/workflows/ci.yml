@@ -36,26 +36,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Caches the *installed* package files (not just the .deb archives), so a
+      # hit restores webkit2gtk/gtk straight to disk instead of re-resolving
+      # and unpacking ~100 packages through apt every run.
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf build-essential curl wget file libxdo-dev libssl-dev
+          version: 1.0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+
+      # Swatinem/rust-cache below only caches ~/.cargo and target/, not
+      # ~/.rustup — without this, every run re-downloads the ~200MB stable
+      # toolchain from scratch even though nothing about it changed.
+      - name: Cache Rust toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.rustup
+          key: rustup-${{ matrix.platform }}-stable
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
