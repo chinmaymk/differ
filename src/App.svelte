@@ -405,17 +405,6 @@
     }
   }
 
-  async function openHeadlessSource(): Promise<void> {
-    if (!apiBase) return;
-    try {
-      const { HttpGitSource } = await import('./lib/sources/http-git');
-      await openSource(new HttpGitSource(apiBase));
-    } catch (e) {
-      status = 'error';
-      errorMsg = e instanceof Error ? e.message : String(e);
-    }
-  }
-
   async function pickRepo(): Promise<void> {
     try {
       const { open } = await import('@tauri-apps/plugin-dialog');
