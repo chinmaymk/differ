@@ -26,6 +26,80 @@ jobs:
       - run: npm test
       - run: npm run check
 
+  rust-test:
+    name: Rust tests (git-core, server)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # Swatinem/rust-cache below only caches ~/.cargo and target/, not
+      # ~/.rustup — without this, every run re-downloads the ~200MB stable
+      # toolchain from scratch even though nothing about it changed.
+      - name: Cache Rust toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.rustup
+          key: rustup-ubuntu-22.04-stable
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          shared-key: rust-test
+          cache-on-failure: true
+
+      # Scoped to git-core + server, not --workspace: src-tauri needs the
+      # full Linux GUI toolchain (libwebkit2gtk etc., see the build job)
+      # just to compile, and has no tests of its own — it's a thin wrapper
+      # delegating to git-core (see src-tauri/CLAUDE.md). The build job
+      # below already proves it compiles and links, across all 3 platforms.
+      - run: cargo test -p git-core -p server
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Cache Rust toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.rustup
+          key: rustup-ubuntu-22.04-stable
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          shared-key: e2e
+          cache-on-failure: true
+
+      - run: npm ci
+
+      # The webServer script (e2e/scripts/start-headless-server.mjs) builds
+      # crates/server itself via `cargo build -p server` — no GUI/webkit
+      # deps needed, since only the headless axum binary is involved, not
+      # src-tauri.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ hashFiles('package-lock.json') }}
+
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
   build:
     name: Build (${{ matrix.platform }})
     strategy:
@@ -86,7 +160,7 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri -> target
+          workspaces: . -> target
           shared-key: ${{ matrix.platform }}
           cache-on-failure: true
 
