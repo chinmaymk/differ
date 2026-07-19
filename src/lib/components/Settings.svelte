@@ -142,13 +142,13 @@
   }
   h2 {
     margin: 0;
-    font-size: 14px;
+    font-size: 0.875rem;
   }
   .close {
     border: none;
     background: none;
     padding: 0 4px;
-    font-size: 18px;
+    font-size: 1.125rem;
     line-height: 1;
     color: var(--fg-muted);
     cursor: pointer;
@@ -167,14 +167,14 @@
   }
   h3 {
     margin: 0 0 10px;
-    font-size: 11px;
+    font-size: 0.6875rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--fg-muted);
   }
   .hint {
     margin: 2px 0 0;
-    font-size: 11.5px;
+    font-size: 0.7188rem;
     color: var(--fg-muted);
   }
   .row {
@@ -185,7 +185,7 @@
     padding: 6px 0;
   }
   .label {
-    font-size: 12.5px;
+    font-size: 0.7812rem;
   }
   .segmented {
     display: flex;
@@ -199,7 +199,7 @@
     background: var(--bg);
     color: var(--fg);
     padding: 4px 10px;
-    font-size: 12px;
+    font-size: 0.75rem;
     cursor: pointer;
   }
   .segmented button + button {
@@ -215,7 +215,7 @@
     background: var(--bg);
     color: var(--fg-muted);
     padding: 4px 12px;
-    font-size: 12px;
+    font-size: 0.75rem;
     cursor: pointer;
   }
   .toggle.on {
@@ -236,13 +236,13 @@
     background: var(--bg);
     color: var(--fg);
     padding: 3px 8px;
-    font-size: 12px;
+    font-size: 0.75rem;
     cursor: pointer;
   }
   .stepper .value {
     min-width: 4ch;
     text-align: center;
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: var(--fg-muted);
     font-family: var(--mono);
   }

@@ -121,6 +121,12 @@
     if (theme === 'system') delete document.documentElement.dataset.theme;
     else document.documentElement.dataset.theme = theme;
   });
+  // Set on the root, not a wrapper div — dialogs/overlays render as siblings
+  // of `.app`, not descendants, so a variable scoped to `.app` never reaches
+  // them and they'd silently fall back to a fixed size.
+  $effect(() => {
+    document.documentElement.style.setProperty('--code-font-size', `${fontSize / 16}rem`);
+  });
 
   // --- Resizable file-tree sidebar ------------------------------------------
   const FL_KEY = 'dv-filelist-width';
@@ -647,7 +653,7 @@
 
 <svelte:window onkeydown={onKey} />
 
-<div class="app" style="--code-font-size: {fontSize}px">
+<div class="app">
   <header class="topbar">
     <button class="brand" onclick={goHome} title="Home">Diff Viewer</button>
     <div class="right">
@@ -817,7 +823,7 @@
     border: none;
     background: none;
     padding: 0;
-    font-size: 14px;
+    font-size: 0.875rem;
   }
   .brand:hover {
     color: var(--accent);
@@ -831,7 +837,7 @@
   .src-label {
     color: var(--fg-muted);
     font-family: var(--mono);
-    font-size: 11.5px;
+    font-size: 0.7188rem;
     max-width: 32ch;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -871,7 +877,7 @@
   }
   .gear {
     padding: 4px 8px;
-    font-size: 14px;
+    font-size: 0.875rem;
     line-height: 1;
   }
   button {
@@ -881,7 +887,7 @@
     background: var(--bg);
     color: var(--fg);
     cursor: pointer;
-    font-size: 12.5px;
+    font-size: 0.7812rem;
   }
   button:hover {
     border-color: var(--accent);
@@ -913,7 +919,7 @@
     border-bottom: 1px solid var(--border);
     background: color-mix(in srgb, var(--del-fg) 12%, transparent);
     color: var(--del-fg);
-    font-size: 11.5px;
+    font-size: 0.7188rem;
   }
   .action-error span {
     flex: 1;
@@ -926,7 +932,7 @@
     background: none;
     padding: 0 2px;
     color: inherit;
-    font-size: 14px;
+    font-size: 0.875rem;
     line-height: 1;
   }
   .fl-divider {

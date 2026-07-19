@@ -38,16 +38,20 @@ test('view mode toggle switches between Unified and Split', async ({ page }) => 
 
 test('font size controls adjust the code font size', async ({ page }) => {
   await page.goto('/');
-  const app = page.locator('.app');
-  await expect(app).toHaveAttribute('style', /--code-font-size: 14px/);
+  // Set on <html> (not a wrapper div) so every overlay — Story Mode, the
+  // Settings dialog itself — inherits it regardless of DOM nesting; the
+  // Settings font-size number becomes the rem value at the fluid root's
+  // ~1920px reference width, so it's expressed as a fraction of 16.
+  const html = page.locator('html');
+  await expect(html).toHaveAttribute('style', /--code-font-size: 0\.875rem/);
 
   await page.getByRole('button', { name: 'Settings' }).click();
   await page.getByRole('button', { name: 'Larger font' }).click();
   await page.getByRole('button', { name: 'Larger font' }).click();
-  await expect(app).toHaveAttribute('style', /--code-font-size: 16px/);
+  await expect(html).toHaveAttribute('style', /--code-font-size: 1rem/);
 
   await page.getByRole('button', { name: 'Smaller font' }).click();
-  await expect(app).toHaveAttribute('style', /--code-font-size: 15px/);
+  await expect(html).toHaveAttribute('style', /--code-font-size: 0\.9375rem/);
 });
 
 test('settings dialog closes', async ({ page }) => {

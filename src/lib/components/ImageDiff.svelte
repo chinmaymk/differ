@@ -107,7 +107,7 @@
     color: var(--fg-muted);
     padding: 4px 12px;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .seg button.on {
     background: var(--accent);
@@ -127,7 +127,7 @@
     min-width: 0;
   }
   .tag {
-    font-size: 11px;
+    font-size: 0.6875rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     padding: 1px 8px;
@@ -157,7 +157,7 @@
   }
   .dims {
     font-family: var(--mono);
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: var(--fg-muted);
   }
   .stage {
@@ -203,7 +203,7 @@
   .legend {
     display: flex;
     justify-content: space-between;
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-family: var(--mono);
   }
   .legend .del { color: var(--del-fg); }

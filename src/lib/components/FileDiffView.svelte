@@ -27,8 +27,12 @@
   }: Props = $props();
 
   let selected = $state<SymbolChange | null>(null);
+  // Reset only when the displayed *file* changes (by path), not merely
+  // re-rendered — a background rebuild (e.g. auto-refresh) replaces `file`
+  // with a new object reference for the same path, and must not silently
+  // clear an in-progress symbol selection.
   $effect(() => {
-    file;
+    file.path;
     selected = null;
   });
 
@@ -202,13 +206,13 @@
     align-items: center;
     gap: 8px;
     font-family: var(--mono);
-    font-size: 13px;
+    font-size: 0.8125rem;
     flex-wrap: wrap;
   }
   .dir { color: var(--fg-muted); }
   .name { font-weight: 600; }
   .badge {
-    font-size: 10px;
+    font-size: 0.625rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     padding: 1px 7px;
@@ -218,18 +222,18 @@
   }
   .from {
     color: var(--fg-muted);
-    font-size: 11.5px;
+    font-size: 0.7188rem;
   }
   .counts {
     display: flex;
     gap: 8px;
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .add { color: var(--add-fg); }
   .del { color: var(--del-fg); }
   .sub {
     margin-top: 3px;
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .muted { color: var(--fg-muted); }
   .toolbar {
@@ -245,7 +249,7 @@
     color: var(--fg-muted);
     padding: 3px 10px;
     cursor: pointer;
-    font-size: 11.5px;
+    font-size: 0.7188rem;
   }
   .toggle.on {
     border-color: var(--accent);
@@ -285,7 +289,7 @@
     background: var(--bg-subtle);
   }
   .pane-title {
-    font-size: 10.5px;
+    font-size: 0.6562rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--fg-muted);

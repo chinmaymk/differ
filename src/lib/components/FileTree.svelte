@@ -194,7 +194,7 @@
     gap: 6px;
     width: 100%;
     color: var(--fg);
-    font-size: 12.5px;
+    font-size: 0.7812rem;
     border-radius: 6px;
     font-family: var(--mono);
   }
@@ -214,7 +214,7 @@
     text-align: left;
     padding: 4px 0;
     font-family: var(--mono);
-    font-size: 12.5px;
+    font-size: 0.7812rem;
   }
   .row.file {
     padding: 0 4px 0 0;
@@ -233,7 +233,7 @@
     text-align: left;
     padding: 4px 0 4px 0;
     font-family: var(--mono);
-    font-size: 12.5px;
+    font-size: 0.7812rem;
   }
   .row:hover,
   .row.file:hover {
@@ -248,7 +248,7 @@
   .tw {
     width: 12px;
     color: var(--fg-muted);
-    font-size: 10px;
+    font-size: 0.625rem;
     flex: none;
   }
   .folder {
@@ -276,7 +276,7 @@
     margin-left: auto;
     display: flex;
     gap: 5px;
-    font-size: 11px;
+    font-size: 0.6875rem;
     flex: none;
     padding-left: 8px;
   }
@@ -293,7 +293,7 @@
     color: var(--fg-muted);
     cursor: pointer;
     width: 20px;
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .viewbtn {
     opacity: 0;

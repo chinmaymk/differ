@@ -465,7 +465,7 @@
     padding: 6px 8px;
     cursor: pointer;
     color: var(--fg);
-    font-size: 12px;
+    font-size: 0.75rem;
     text-align: left;
   }
   .trigger:hover {
@@ -557,7 +557,7 @@
     color: var(--fg-muted);
     cursor: pointer;
     padding: 7px 6px;
-    font-size: 11px;
+    font-size: 0.6875rem;
     text-align: center;
   }
   .tab:hover {
@@ -569,7 +569,7 @@
   }
   .count {
     color: var(--fg-muted);
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .search {
     flex: none;
@@ -582,7 +582,7 @@
     border: 1px solid var(--border);
     border-radius: 5px;
     padding: 5px 8px;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--fg);
   }
   .search input:focus {
@@ -596,7 +596,7 @@
     padding: 16px 10px;
     text-align: center;
     color: var(--fg-muted);
-    font-size: 11.5px;
+    font-size: 0.7188rem;
   }
   .row {
     display: flex;
@@ -649,7 +649,7 @@
     cursor: pointer;
     border-radius: 4px;
     padding: 3px 5px;
-    font-size: 11px;
+    font-size: 0.6875rem;
     line-height: 1;
   }
   .iconbtn:hover {
@@ -664,7 +664,7 @@
     padding: 0 6px;
   }
   .dots {
-    font-size: 14px;
+    font-size: 0.875rem;
     padding: 3px 7px;
   }
   .rowmenu:has(.menu-pop) .dots,
@@ -694,7 +694,7 @@
     text-align: left;
     padding: 6px 8px;
     border-radius: 4px;
-    font-size: 12px;
+    font-size: 0.75rem;
     white-space: nowrap;
   }
   .menu-item:hover {
@@ -708,7 +708,7 @@
   }
   .sha {
     font-family: var(--mono);
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: var(--accent);
     flex: none;
     width: 7ch;
@@ -720,7 +720,7 @@
     min-width: 0;
   }
   .otitle {
-    font-size: 12.5px;
+    font-size: 0.7812rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -729,7 +729,7 @@
     gap: 6px;
   }
   .osub {
-    font-size: 10.5px;
+    font-size: 0.6562rem;
     color: var(--fg-muted);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -740,7 +740,7 @@
   }
   .badge {
     flex: none;
-    font-size: 9px;
+    font-size: 0.5625rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     padding: 1px 5px;
