@@ -15,9 +15,21 @@
      * (demo mode, or a historical-commit comparison) — hides hunk actions. */
     section?: SectionKey | null;
     onHunkAction?: (hunk: Hunk, mode: HunkMode) => void;
+    /** Render as a symbol-grouped outline, folded to each top-level
+     * tree-sitter symbol's header by default (Story Mode: a slide shouldn't
+     * dump a wall of lines before the reader's chosen to see it). Mutually
+     * exclusive with hunk staging actions — Story Mode is read-only. */
+    startFolded?: boolean;
   }
-  let { file, selected = null, wrap = true, neutral = false, section = null, onHunkAction }: Props =
-    $props();
+  let {
+    file,
+    selected = null,
+    wrap = true,
+    neutral = false,
+    section = null,
+    onHunkAction,
+    startFolded = false,
+  }: Props = $props();
 
   interface Row {
     kind: 'hunk' | 'line';
@@ -49,6 +61,74 @@
   });
   const rows = $derived(built.rows);
 
+  // Group lines by top-level tree-sitter symbol (Story Mode only) — folding
+  // follows code structure, not the incidental unified-diff hunk boundaries.
+  // Folded, a block reads like an editor fold: its own first line of code,
+  // unmodified, with a muted inline "N lines" marker appended — not a
+  // separate synthetic header row.
+  interface GroupBlock {
+    key: string;
+    lines: DiffLine[];
+  }
+
+  function topLevelSymbol(oldLine: number | null, newLine: number | null): SymbolChange | null {
+    for (const r of file.semantic.roots) {
+      if (r.new && newLine !== null && newLine >= r.new.startLine && newLine <= r.new.endLine) return r;
+      if (r.old && oldLine !== null && oldLine >= r.old.startLine && oldLine <= r.old.endLine) return r;
+    }
+    return null;
+  }
+
+  const groupedBlocks = $derived.by<GroupBlock[]>(() => {
+    if (!startFolded || file.semantic.textOnly) return [];
+    const blocks: GroupBlock[] = [];
+    let current: GroupBlock | null = null;
+    for (const h of file.text.hunks) {
+      for (const line of h.lines) {
+        const root = topLevelSymbol(line.oldLine, line.newLine);
+        const key = root?.id ?? '__file__';
+        if (!current || current.key !== key) {
+          current = { key, lines: [] };
+          blocks.push(current);
+        }
+        current.lines.push(line);
+      }
+    }
+    return blocks;
+  });
+
+  // Folding only makes sense when it actually produces an outline — a
+  // text-only file (no symbol tree, e.g. an unsupported language like
+  // Svelte) or a file whose whole diff sits under one symbol/no symbol at
+  // all would otherwise "fold" to a single line hiding the entire file,
+  // which isn't a fold, it's just hiding everything.
+  const canFold = $derived(startFolded && groupedBlocks.length > 1);
+
+  function blockFor(oldLine: number | null, newLine: number | null): GroupBlock | undefined {
+    return groupedBlocks.find((b) =>
+      b.lines.some((l) => (newLine !== null && l.newLine === newLine) || (oldLine !== null && l.oldLine === oldLine)),
+    );
+  }
+
+  // Fold state per symbol-group key; reset only when the displayed *file*
+  // changes (by path), not merely re-rendered — a background rebuild (e.g.
+  // auto-refresh) replaces the `file` object with a new reference for the
+  // same path, and must not silently discard the reader's expand state.
+  let foldOverride = $state<Record<string, boolean>>({});
+  $effect(() => {
+    file.path;
+    foldOverride = {};
+  });
+  function isFolded(key: string): boolean {
+    return foldOverride[key] ?? true;
+  }
+  function toggleFold(key: string) {
+    foldOverride[key] = !isFolded(key);
+  }
+  function sign(l: DiffLine): string {
+    return l.op === 'add' ? '+' : l.op === 'del' ? '−' : ' ';
+  }
+
   const segments = (line: DiffLine) => lineSegments(line, built.inline.get(line));
 
   function inRange(line: DiffLine): boolean {
@@ -66,13 +146,27 @@
 
   let container = $state<HTMLDivElement | null>(null);
 
+  // If the selected symbol is inside a folded block, expand that block first
+  // so the target line actually exists in the DOM to scroll to.
+  $effect(() => {
+    if (!selected || !canFold) return;
+    const block = blockFor(selected.old?.startLine ?? null, selected.new?.startLine ?? null);
+    if (block && isFolded(block.key)) foldOverride[block.key] = false;
+  });
+
   // Scroll the first line of the selected symbol into view when it changes.
+  // Reads `isFolded` (not just `selected`) so this reruns once the effect
+  // above has expanded the target block and the DOM has caught up.
   $effect(() => {
     if (!selected || !container) return;
     const target =
       selected.new?.startLine ?? selected.old?.startLine ?? null;
     const side = selected.new ? 'new' : 'old';
     if (target === null) return;
+    if (canFold) {
+      const block = blockFor(selected.old?.startLine ?? null, selected.new?.startLine ?? null);
+      if (block && isFolded(block.key)) return;
+    }
     const el = container.querySelector<HTMLElement>(
       `[data-${side}="${target}"]`,
     );
@@ -87,6 +181,69 @@
     <p class="empty">File too large to diff ({file.add + file.del} lines changed).</p>
   {:else if rows.length === 0}
     <p class="empty">No textual changes.</p>
+  {:else if canFold}
+    <table>
+      <tbody>
+        {#each groupedBlocks as block, i (i)}
+          {@const foldable = block.lines.length > 1}
+          {@const folded = foldable && isFolded(block.key)}
+          {@const head = block.lines[0]}
+          {@const rest = block.lines.slice(1)}
+          {@const restAdd = rest.filter((l) => l.op === 'add').length}
+          {@const restDel = rest.filter((l) => l.op === 'del').length}
+          <tr
+            class="line {head.op}"
+            class:hl={inRange(head)}
+            class:fold-head={folded}
+            data-old={head.oldLine ?? ''}
+            data-new={head.newLine ?? ''}
+            onclick={folded ? () => toggleFold(block.key) : undefined}
+          >
+            <td class="fold-gutter">
+              {#if foldable}
+                <button
+                  class="fold-toggle"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    toggleFold(block.key);
+                  }}
+                  aria-label={folded ? 'Expand' : 'Collapse'}
+                >{folded ? '▸' : '▾'}</button>
+              {/if}
+            </td>
+            <td class="gutter num">{head.oldLine ?? ''}</td>
+            <td class="gutter num">{head.newLine ?? ''}</td>
+            <td class="code">
+              <span class="sign">{sign(head)}</span
+              >{#each segments(head) as seg}<span class={seg.cls}>{seg.text}</span>{/each}
+              {#if folded}
+                <span class="fold-suffix"
+                  >⋯ {rest.length} line{rest.length === 1 ? '' : 's'}{#if restAdd || restDel} <span class="fold-counts">{#if restAdd}<span class="add">+{restAdd}</span>{/if}{#if restDel}<span class="del">−{restDel}</span>{/if}</span>{/if} ⋯</span
+                >
+              {/if}
+            </td>
+          </tr>
+          {#if !folded}
+            {#each rest as l}
+              <tr
+                class="line {l.op}"
+                class:hl={inRange(l)}
+                data-old={l.oldLine ?? ''}
+                data-new={l.newLine ?? ''}
+              >
+                <td class="fold-gutter"></td>
+                <td class="gutter num">{l.oldLine ?? ''}</td>
+                <td class="gutter num">{l.newLine ?? ''}</td>
+                <td class="code">
+                  <span class="sign">{sign(l)}</span
+                  >{#each segments(l) as seg}<span class={seg.cls}>{seg.text}</span>{/each}
+                </td>
+              </tr>
+            {/each}
+          {/if}
+        {/each}
+      </tbody>
+    </table>
   {:else}
     <table>
       <tbody>
@@ -229,6 +386,57 @@
   .crumb {
     color: var(--fg-muted);
     margin-left: 10px;
+  }
+  .fold-gutter {
+    width: 14px;
+    min-width: 14px;
+    padding: 0;
+    text-align: center;
+    vertical-align: top;
+    user-select: none;
+  }
+  .fold-toggle {
+    border: none;
+    background: none;
+    color: var(--fg-muted);
+    cursor: pointer;
+    padding: 0;
+    font-size: 0.5625rem;
+    line-height: inherit;
+    vertical-align: top;
+  }
+  .fold-toggle:hover {
+    color: var(--accent);
+  }
+  .line.fold-head {
+    cursor: pointer;
+  }
+  /* box-shadow (not background) so the underlying add/del tint still shows
+     through on hover — it composites instead of replacing the row color. */
+  .line.fold-head:hover td {
+    box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--fg) 6%, transparent);
+  }
+  .line.fold-head:hover .fold-suffix {
+    background: var(--bg-inset);
+  }
+  .fold-suffix {
+    margin-left: 8px;
+    padding: 0 6px;
+    border-radius: 3px;
+    background: var(--bg-subtle);
+    color: var(--fg-muted);
+    font-style: italic;
+    font-size: 0.9em;
+  }
+  .fold-counts {
+    font-style: normal;
+    margin-left: 4px;
+  }
+  .fold-counts .add {
+    color: var(--add-fg);
+  }
+  .fold-counts .del {
+    color: var(--del-fg);
   }
   .hunk-row .gutter {
     background: var(--bg-subtle);

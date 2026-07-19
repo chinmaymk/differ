@@ -14,7 +14,10 @@ use std::process::Command;
 
 use base64::prelude::{Engine as _, BASE64_STANDARD};
 use git2::build::CheckoutBuilder;
-use git2::{Delta, DiffFindOptions, DiffOptions, ObjectType, Oid, Repository, StatusOptions, Tree};
+use git2::{
+    Delta, DiffFindOptions, DiffOptions, ObjectType, Oid, Repository, StatusOptions, Tree,
+    TreeWalkMode, TreeWalkResult,
+};
 use serde::{Deserialize, Serialize};
 
 /// Summary of a repository, used to confirm/label an opened repo.
@@ -344,6 +347,56 @@ pub fn list_changes(
     }
 
     Ok(out)
+}
+
+/// List every tracked/working-tree file path at a revision (not just changed
+/// ones) — used for Story Mode's repo-wide duplicate-code and blast-radius
+/// analysis. Unlike `list_changes`, this isn't a diff between two
+/// revisions; it's a single-revision snapshot of "what files exist here".
+///
+/// `"worktree"`/`"index"`: tracked files via the index (already excludes
+/// `.gitignore`d paths), plus (worktree only) untracked-but-not-ignored
+/// files so a coding agent's brand-new files are included. `"ref"`/`"empty"`:
+/// a walk of the resolved tree (tracked files only, by definition — a
+/// historical commit has no "untracked" concept).
+pub fn list_all_files(repo_path: String, rev: Revision) -> Result<Vec<String>, String> {
+    let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
+
+    if rev.kind == "worktree" || rev.kind == "index" {
+        let index = repo.index().map_err(|e| e.to_string())?;
+        let mut paths: std::collections::BTreeSet<String> = index
+            .iter()
+            .map(|e| String::from_utf8_lossy(&e.path).into_owned())
+            .collect();
+
+        if rev.kind == "worktree" {
+            let mut opts = StatusOptions::new();
+            opts.include_untracked(true).include_ignored(false);
+            for entry in repo
+                .statuses(Some(&mut opts))
+                .map_err(|e| e.to_string())?
+                .iter()
+            {
+                if let Some(p) = entry.path() {
+                    paths.insert(p.to_string());
+                }
+            }
+        }
+
+        Ok(paths.into_iter().collect())
+    } else {
+        let tree = rev_to_tree(&repo, &rev)?;
+        let mut out = Vec::new();
+        tree.walk(TreeWalkMode::PreOrder, |root, entry| {
+            if entry.kind() == Some(ObjectType::Blob) {
+                let name = entry.name().unwrap_or_default();
+                out.push(format!("{root}{name}"));
+            }
+            TreeWalkResult::Ok
+        })
+        .map_err(|e| e.to_string())?;
+        Ok(out)
+    }
 }
 
 pub fn read_file(repo_path: String, rev: Revision, path: String) -> Result<FileContent, String> {
@@ -1543,6 +1596,63 @@ mod tests {
         let path = dir.to_str().unwrap().to_string();
         let err = pull(path).unwrap_err();
         assert!(!err.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_all_files_walks_a_ref_tree() {
+        let (dir, _repo) = init_repo_with_commit("list-all-ref");
+        let path = dir.to_str().unwrap().to_string();
+
+        let files = list_all_files(path, Revision { kind: "ref".into(), r#ref: Some("HEAD".into()) }).unwrap();
+        assert_eq!(files, vec!["committed.txt".to_string()]);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_all_files_worktree_includes_untracked_but_not_ignored() {
+        let (dir, _repo) = init_repo_with_commit("list-all-worktree");
+        let path = dir.to_str().unwrap().to_string();
+
+        std::fs::write(dir.join(".gitignore"), b"ignored.txt\n").unwrap();
+        stage_paths(path.clone(), vec![".gitignore".into()]).unwrap();
+        commit(path.clone(), "add gitignore".into()).unwrap();
+
+        std::fs::write(dir.join("untracked.txt"), b"new\n").unwrap();
+        std::fs::write(dir.join("ignored.txt"), b"should not appear\n").unwrap();
+
+        let files = list_all_files(path, Revision { kind: "worktree".into(), r#ref: None }).unwrap();
+        assert!(files.contains(&"committed.txt".to_string()));
+        assert!(files.contains(&".gitignore".to_string()));
+        assert!(files.contains(&"untracked.txt".to_string()), "expected untracked file to be listed: {files:?}");
+        assert!(!files.contains(&"ignored.txt".to_string()), ".gitignored file must not be listed: {files:?}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_all_files_index_excludes_untracked() {
+        let (dir, _repo) = init_repo_with_commit("list-all-index");
+        let path = dir.to_str().unwrap().to_string();
+
+        std::fs::write(dir.join("untracked.txt"), b"new\n").unwrap();
+
+        let files = list_all_files(path, Revision { kind: "index".into(), r#ref: None }).unwrap();
+        assert!(files.contains(&"committed.txt".to_string()));
+        assert!(!files.contains(&"untracked.txt".to_string()));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_all_files_empty_baseline_is_empty() {
+        let (dir, _repo) = init_repo_with_commit("list-all-empty");
+        let path = dir.to_str().unwrap().to_string();
+
+        let files = list_all_files(path, Revision { kind: "empty".into(), r#ref: None }).unwrap();
+        assert!(files.is_empty());
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { FileDiff, Hunk, HunkMode, SymbolChange, SymbolStatus } from '../engine/model';
+  import type { ImportanceReason } from '../engine/importance';
   import SemanticTree from './SemanticTree.svelte';
   import RawDiff from './RawDiff.svelte';
   import SplitDiff from './SplitDiff.svelte';
@@ -15,6 +16,11 @@
     onToggleSemantic: () => void;
     section?: SectionKey | null;
     onHunkAction?: (hunk: Hunk, mode: HunkMode) => void;
+    /** Story Mode's importance-ranking reasons, folded into the semantic
+     * panel instead of a separate top strip. Absent for the main viewer. */
+    reasons?: ImportanceReason[];
+    /** Hunks start collapsed to just their header (Story Mode only). */
+    startFolded?: boolean;
   }
   let {
     file,
@@ -24,6 +30,8 @@
     onToggleSemantic,
     section = null,
     onHunkAction,
+    reasons = [],
+    startFolded = false,
   }: Props = $props();
 
   let selected = $state<SymbolChange | null>(null);
@@ -160,9 +168,9 @@
     >
       <section class="rawpane">
         {#if viewMode === 'split'}
-          <SplitDiff {file} {selected} {wrap} {neutral} {section} {onHunkAction} />
+          <SplitDiff {file} {selected} {wrap} {neutral} {section} {onHunkAction} {startFolded} />
         {:else}
-          <RawDiff {file} {selected} {wrap} {neutral} {section} {onHunkAction} />
+          <RawDiff {file} {selected} {wrap} {neutral} {section} {onHunkAction} {startFolded} />
         {/if}
       </section>
       {#if showTree}
@@ -177,6 +185,19 @@
         ></div>
         <aside class="semantic">
           <div class="pane-title">Semantic changes</div>
+          {#if reasons.length > 0}
+            <div class="reasons">
+              {#each reasons as reason (reason.text)}
+                <span
+                  class="reason"
+                  class:duplicate={reason.kind === 'duplicate'}
+                  class:blast={reason.kind === 'blast-radius'}
+                >
+                  {reason.text}
+                </span>
+              {/each}
+            </div>
+          {/if}
           <SemanticTree
             changes={file.semantic.roots}
             selectedId={selected?.id ?? null}
@@ -294,6 +315,28 @@
     letter-spacing: 0.06em;
     color: var(--fg-muted);
     padding: 2px 8px 8px;
+  }
+  .reasons {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 0 8px 10px;
+  }
+  .reason {
+    font-size: 0.6875rem;
+    padding: 3px 9px;
+    border-radius: 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--fg-muted);
+  }
+  .reason.duplicate {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .reason.blast {
+    border-color: var(--del-fg);
+    color: var(--del-fg);
   }
   .rawpane {
     min-width: 0;

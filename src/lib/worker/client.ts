@@ -20,6 +20,7 @@ export class EngineClient {
       { type: 'module' },
     );
     this.worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
+      if (e.data.type !== 'build') return; // index-batch responses belong to IndexWorkerPool
       const { id, result, error } = e.data;
       const p = this.pending.get(id);
       if (!p) return;

@@ -98,6 +98,15 @@ export class HttpGitSource implements DiffSource {
     };
   }
 
+  listAllFiles(rev: Revision): Promise<string[]> {
+    return this.post<string[]>('/api/all-files', { rev });
+  }
+
+  async readFileAt(rev: Revision, path: string): Promise<Uint8Array | null> {
+    const content = await this.post<FileContent>('/api/file', { rev, path });
+    return content.bytes != null ? base64ToBytes(content.bytes) : null;
+  }
+
   stagePaths(paths: string[]): Promise<void> {
     return this.post('/api/stage', { paths });
   }

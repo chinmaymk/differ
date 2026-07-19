@@ -38,6 +38,11 @@ pub fn read_file(repo_path: String, rev: Revision, path: String) -> Result<FileC
     git_core::read_file(repo_path, rev, path)
 }
 
+#[tauri::command]
+pub fn list_all_files(repo_path: String, rev: Revision) -> Result<Vec<String>, String> {
+    git_core::list_all_files(repo_path, rev)
+}
+
 /// Stage, unstage, or discard a single hunk exactly as rendered by the
 /// frontend. `mode` is "stage" | "unstage" | "discard".
 #[tauri::command]

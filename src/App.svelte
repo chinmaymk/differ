@@ -30,6 +30,7 @@
   import Welcome from './lib/components/Welcome.svelte';
   import ComparisonBar from './lib/components/ComparisonBar.svelte';
   import SettingsDialog from './lib/components/Settings.svelte';
+  import StoryMode from './lib/components/StoryMode.svelte';
 
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
   const apiBase = import.meta.env.VITE_API_BASE;
@@ -53,6 +54,7 @@
   let status = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
   let errorMsg = $state('');
   let viewed = $state<Set<string>>(new Set());
+  let storyOpen = $state(false);
 
   const canBrowseHistory = $derived(
     !!source?.listCommits ||
@@ -121,9 +123,9 @@
     if (theme === 'system') delete document.documentElement.dataset.theme;
     else document.documentElement.dataset.theme = theme;
   });
-  // Set on the root, not a wrapper div — dialogs/overlays render as siblings
-  // of `.app`, not descendants, so a variable scoped to `.app` never reaches
-  // them and they'd silently fall back to a fixed size.
+  // Set on the root, not a wrapper div — Story Mode and the Settings dialog
+  // render as siblings of `.app`, not descendants, so a variable scoped to
+  // `.app` never reaches them and they'd silently fall back to a fixed size.
   $effect(() => {
     document.documentElement.style.setProperty('--code-font-size', `${fontSize / 16}rem`);
   });
@@ -188,6 +190,15 @@
     viewed = next;
   }
 
+  /** Additive-only mark, used by Story Mode as it advances — unlike
+   * `toggleViewed`, stepping back to a previously-viewed slide must never
+   * unmark it. */
+  function markViewed(section: SectionKey, path: string) {
+    const k = sectionKey(section, path);
+    if (viewed.has(k)) return;
+    viewed = new Set(viewed).add(k);
+  }
+
   function combinedList(): { section: SectionKey; file: ChangedFile }[] {
     return [
       ...stagedFiles.map((file) => ({ section: 'staged' as const, file })),
@@ -197,7 +208,7 @@
 
   // Keyboard navigation for high-volume review.
   function onKey(e: KeyboardEvent) {
-    if (status !== 'ready') return;
+    if (status !== 'ready' || storyOpen) return;
     const target = e.target as HTMLElement;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
     const list = combinedList();
@@ -327,6 +338,7 @@
   // --- Loading -------------------------------------------------------------
   async function reload(): Promise<void> {
     if (!source) return;
+    storyOpen = false;
     status = 'loading';
     errorMsg = '';
     results = {};
@@ -445,6 +457,7 @@
   }
 
   function goHome() {
+    storyOpen = false;
     source = null;
     status = 'idle';
     stagedFiles = [];
@@ -465,6 +478,16 @@
     selected = { section, path };
     const file = (section === 'staged' ? stagedFiles : unstagedFiles).find((f) => f.path === path);
     if (source && file) void buildOne(source, section, file);
+  }
+
+  function storyBuildOne(section: SectionKey, file: ChangedFile, force?: boolean): Promise<void> {
+    if (!source) return Promise.resolve();
+    return buildOne(source, section, file, force);
+  }
+
+  function closeStory(last: { section: SectionKey; path: string } | null) {
+    storyOpen = false;
+    if (last) select(last.section, last.path);
   }
 
   // --- Write operations: stage / unstage / discard / hunks / commit / push --
@@ -683,6 +706,15 @@
           {/if}
         </button>
       {/if}
+      {#if status === 'ready'}
+        <button
+          onclick={() => (storyOpen = true)}
+          disabled={combinedList().length === 0}
+          title="Review changes one file at a time, ranked by importance"
+        >
+          ▶ Story Mode
+        </button>
+      {/if}
       <button class="gear" onclick={() => (settingsOpen = true)} aria-label="Settings" title="Settings">⚙</button>
     </div>
   </header>
@@ -781,6 +813,23 @@
     </div>
   {/if}
 </div>
+
+{#if storyOpen && source}
+  <StoryMode
+    files={combinedList()}
+    {source}
+    {results}
+    {errors}
+    {viewed}
+    {head}
+    {viewMode}
+    {wrap}
+    {showSemantic}
+    onBuildOne={storyBuildOne}
+    onMarkViewed={markViewed}
+    onClose={closeStory}
+  />
+{/if}
 
 {#if settingsOpen}
   <SettingsDialog

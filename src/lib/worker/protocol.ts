@@ -1,5 +1,13 @@
 /** Message protocol between the main thread and the engine worker. */
-import type { DiffEntry, FileDiff } from '../engine/model';
+import type { DiffEntry, FileDiff, SymbolKind } from '../engine/model';
+
+/** A flattened, repo-index-only projection of a symbol — no line numbers,
+ * hashes, or children, since nothing renders from this (dup-index.ts). */
+export interface IndexedSymbol {
+  name: string;
+  kind: SymbolKind;
+  fingerprint: number[];
+}
 
 export interface BuildRequest {
   type: 'build';
@@ -7,7 +15,20 @@ export interface BuildRequest {
   entry: DiffEntry;
 }
 
-export type WorkerRequest = BuildRequest;
+/** One file to extract symbols from for the repo-wide index (dup-index.ts). */
+export interface IndexBatchFile {
+  path: string;
+  lang: string;
+  source: string;
+}
+
+export interface IndexBatchRequest {
+  type: 'index-batch';
+  id: number;
+  files: IndexBatchFile[];
+}
+
+export type WorkerRequest = BuildRequest | IndexBatchRequest;
 
 export interface BuildResponse {
   type: 'build';
@@ -16,4 +37,16 @@ export interface BuildResponse {
   error?: string;
 }
 
-export type WorkerResponse = BuildResponse;
+export interface IndexedFile {
+  path: string;
+  symbols: IndexedSymbol[];
+}
+
+export interface IndexBatchResponse {
+  type: 'index-batch';
+  id: number;
+  result?: IndexedFile[];
+  error?: string;
+}
+
+export type WorkerResponse = BuildResponse | IndexBatchResponse;

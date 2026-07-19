@@ -41,6 +41,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/worktrees", get(get_worktrees))
         .route("/api/changes", post(post_changes))
         .route("/api/file", post(post_file))
+        .route("/api/all-files", post(post_all_files))
         .route("/api/hunk", post(post_hunk))
         .route("/api/stage", post(post_stage))
         .route("/api/unstage", post(post_unstage))
@@ -91,6 +92,11 @@ struct ChangesRequest {
 struct FileRequest {
     rev: Revision,
     path: String,
+}
+
+#[derive(Deserialize)]
+struct AllFilesRequest {
+    rev: Revision,
 }
 
 #[derive(Deserialize)]
@@ -148,6 +154,11 @@ async fn post_changes(State(state): State<Arc<AppState>>, Json(body): Json<Chang
 async fn post_file(State(state): State<Arc<AppState>>, Json(body): Json<FileRequest>) -> Response {
     let repo_path = state.repo_path.clone();
     ok_response(run_blocking(move || git_core::read_file(repo_path, body.rev, body.path)).await)
+}
+
+async fn post_all_files(State(state): State<Arc<AppState>>, Json(body): Json<AllFilesRequest>) -> Response {
+    let repo_path = state.repo_path.clone();
+    ok_response(run_blocking(move || git_core::list_all_files(repo_path, body.rev)).await)
 }
 
 // -- Mutating endpoints: each holds `write_lock` for its full duration. --

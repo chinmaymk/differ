@@ -89,6 +89,19 @@ export class TauriGitSource implements DiffSource {
     };
   }
 
+  listAllFiles(rev: Revision): Promise<string[]> {
+    return invoke<string[]>('list_all_files', { repoPath: this.repoPath, rev });
+  }
+
+  async readFileAt(rev: Revision, path: string): Promise<Uint8Array | null> {
+    const content = await invoke<FileContent>('read_file', {
+      repoPath: this.repoPath,
+      rev,
+      path,
+    });
+    return content.bytes != null ? base64ToBytes(content.bytes) : null;
+  }
+
   stagePaths(paths: string[]): Promise<void> {
     return invoke('stage_paths', { repoPath: this.repoPath, paths });
   }

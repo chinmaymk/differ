@@ -177,6 +177,14 @@ export interface SymbolChange {
   del: number;
   /** True if this symbol or any descendant has line changes. */
   hasChanges: boolean;
+  /**
+   * The symbol's body fingerprint (new-side, or old-side when removed) —
+   * carried over from the source `SymbolNode` so repo-wide duplicate-code
+   * detection (Story Mode) can compare a changed symbol against the rest
+   * of the working tree without re-parsing. Same shape/semantics as
+   * `SymbolNode.fingerprint`.
+   */
+  fingerprint: number[];
   children: SymbolChange[];
 }
 
@@ -350,6 +358,14 @@ export interface DiffSource {
   listTags?(): Promise<TagInfo[]>;
   /** List worktrees (the main one plus any linked ones). */
   listWorktrees?(): Promise<WorktreeInfo[]>;
+  /** List all tracked/working-tree file paths at a revision (not just
+   * changed ones), for repo-wide analysis (Story Mode's duplicate-code and
+   * blast-radius detection). Absent for sources without local filesystem/
+   * git access — callers must treat this as optional, same as `stagePaths?`. */
+  listAllFiles?(rev: Revision): Promise<string[]>;
+  /** Read raw bytes for an arbitrary path at a revision (not necessarily a
+   * changed file). Paired with `listAllFiles` for repo-wide indexing. */
+  readFileAt?(rev: Revision, path: string): Promise<Uint8Array | null>;
 
   // -- Write operations, present only for sources backed by a real local
   // repo (desktop). Absent entirely for read-only sources (demo/paste

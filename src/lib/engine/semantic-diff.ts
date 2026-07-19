@@ -15,6 +15,7 @@ import type {
   SymbolRef,
   ModifiedDetail,
 } from './model';
+import { diceSimilarity } from './similarity';
 
 /** Minimum Dice similarity to treat a residual pair as a rename. */
 const RENAME_THRESHOLD = 0.6;
@@ -34,30 +35,9 @@ function key(s: SymbolNode): string {
   return `${s.kind}\0${s.name}`;
 }
 
-/** Dice coefficient over two sorted, de-duplicated hash arrays. */
-function dice(a: number[], b: number[]): number {
-  if (a.length === 0 && b.length === 0) return 1;
-  if (a.length === 0 || b.length === 0) return 0;
-  let i = 0;
-  let j = 0;
-  let inter = 0;
-  while (i < a.length && j < b.length) {
-    if (a[i] === b[j]) {
-      inter++;
-      i++;
-      j++;
-    } else if (a[i] < b[j]) {
-      i++;
-    } else {
-      j++;
-    }
-  }
-  return (2 * inter) / (a.length + b.length);
-}
-
 function similarity(a: SymbolNode, b: SymbolNode): number {
   if (a.bodyHash === b.bodyHash) return 1;
-  return dice(a.fingerprint, b.fingerprint);
+  return diceSimilarity(a.fingerprint, b.fingerprint);
 }
 
 function modifiedDetail(a: SymbolNode, b: SymbolNode): ModifiedDetail {
@@ -92,6 +72,7 @@ function pairChange(old: SymbolNode, neu: SymbolNode, ctx: Ctx): SymbolChange {
     add: 0,
     del: 0,
     hasChanges: !same || childChanged,
+    fingerprint: neu.fingerprint,
     children,
   };
   if (!same) change.detail = modifiedDetail(old, neu);
@@ -109,6 +90,7 @@ function removedChange(s: SymbolNode, ctx: Ctx): SymbolChange {
     add: 0,
     del: 0,
     hasChanges: true,
+    fingerprint: s.fingerprint,
     children,
   };
   ctx.removed.push({ change, sym: s });
@@ -126,6 +108,7 @@ function addedChange(s: SymbolNode, ctx: Ctx): SymbolChange {
     add: 0,
     del: 0,
     hasChanges: true,
+    fingerprint: s.fingerprint,
     children,
   };
   ctx.added.push({ change, sym: s });
@@ -146,6 +129,7 @@ function renameChange(old: SymbolNode, neu: SymbolNode, score: number, ctx: Ctx)
     add: 0,
     del: 0,
     hasChanges: true,
+    fingerprint: neu.fingerprint,
     children,
   };
   if (old.bodyHash !== neu.bodyHash || old.signatureHash !== neu.signatureHash) {

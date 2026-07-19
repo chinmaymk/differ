@@ -12,6 +12,7 @@ pub fn run() {
             git::list_commits,
             git::list_changes,
             git::read_file,
+            git::list_all_files,
             git::apply_hunk,
             git::stage_paths,
             git::unstage_paths,
