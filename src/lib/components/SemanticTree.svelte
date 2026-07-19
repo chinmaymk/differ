@@ -14,10 +14,11 @@
   // Only surface symbols that actually changed (progressive disclosure).
   const visible = $derived(changes.filter((c) => c.hasChanges));
 
-  // Expansion state per node id; containers start expanded.
+  // Expansion state per node id; every container starts folded so the panel
+  // reads as a scannable top-level outline first, expand-on-demand for detail.
   let expanded = $state<Record<string, boolean>>({});
   function isOpen(c: SymbolChange): boolean {
-    return expanded[c.id] ?? true;
+    return expanded[c.id] ?? false;
   }
   function toggle(c: SymbolChange) {
     expanded[c.id] = !isOpen(c);
@@ -100,7 +101,7 @@
     color: var(--fg-muted);
     cursor: pointer;
     padding: 0;
-    font-size: 10px;
+    font-size: 0.625rem;
   }
   .label {
     flex: 1;
@@ -114,7 +115,7 @@
     text-align: left;
     padding: 3px 6px 3px 0;
     min-width: 0;
-    font-size: 12.5px;
+    font-size: 0.7812rem;
   }
   .glyph {
     font-family: var(--mono);
@@ -137,14 +138,14 @@
     color: var(--fg-muted);
   }
   .badge {
-    font-size: 10px;
+    font-size: 0.625rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     opacity: 0.85;
     flex: none;
   }
   .conf {
-    font-size: 10px;
+    font-size: 0.625rem;
     color: var(--fg-muted);
   }
   .counts {
@@ -152,7 +153,7 @@
     display: flex;
     gap: 6px;
     font-family: var(--mono);
-    font-size: 11px;
+    font-size: 0.6875rem;
     padding-left: 8px;
     flex: none;
   }

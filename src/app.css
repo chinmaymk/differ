@@ -120,11 +120,23 @@ body {
   height: 100%;
 }
 
+/* Fluid root size: every `rem` in the app scales with it, so text stays
+   readable on a large/high-resolution display (more CSS pixels available
+   at 100% OS scaling means a fixed px value renders physically tiny)
+   without ballooning on a narrow window. Every `Npx` below was converted
+   to `(N/16)rem`, so 16px at this viewport width is the size-neutral
+   point — ~1920px (a common desktop width) renders identically to the
+   old fixed-px sizing; anything wider scales up from there, anything
+   narrower eases down to a 14px floor. */
+html {
+  font-size: clamp(14px, 12.2px + 0.2vw, 20px);
+}
+
 body {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--sans);
-  font-size: 13px;
+  font-size: 1rem;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }

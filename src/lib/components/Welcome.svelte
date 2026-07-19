@@ -90,7 +90,7 @@
     padding: 20px 12px;
   }
   .recent-head {
-    font-size: 11px;
+    font-size: 0.6875rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--fg-muted);
@@ -125,10 +125,10 @@
   }
   .rname {
     font-weight: 600;
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
   .rpath {
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: var(--fg-muted);
     font-family: var(--mono);
     max-width: 100%;
@@ -137,7 +137,7 @@
     white-space: nowrap;
   }
   .rago {
-    font-size: 10.5px;
+    font-size: 0.6562rem;
     color: var(--fg-muted);
   }
   .rx {
@@ -145,7 +145,7 @@
     background: none;
     color: var(--fg-muted);
     cursor: pointer;
-    font-size: 16px;
+    font-size: 1rem;
     padding: 0 8px;
     opacity: 0;
   }
@@ -164,7 +164,7 @@
     margin: 0 auto;
   }
   .logo {
-    font-size: 44px;
+    font-size: 2.75rem;
     color: var(--accent);
     line-height: 1;
   }
@@ -190,7 +190,7 @@
     border: 1px solid var(--accent);
     border-radius: 8px;
     padding: 10px 18px;
-    font-size: 14px;
+    font-size: 0.875rem;
     cursor: pointer;
     font-weight: 600;
   }
@@ -204,7 +204,7 @@
     border-radius: 8px;
     padding: 8px 18px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
   .secondary:hover {
     border-color: var(--accent);
@@ -223,7 +223,7 @@
     background: var(--bg);
     color: var(--fg);
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .manual button {
     border: 1px solid var(--border);
@@ -239,7 +239,7 @@
   }
   .hint {
     color: var(--fg-muted);
-    font-size: 12px;
+    font-size: 0.75rem;
     margin-top: 8px;
     max-width: 340px;
   }

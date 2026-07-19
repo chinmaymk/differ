@@ -192,7 +192,7 @@
   .row1 {
     display: flex;
     justify-content: space-between;
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: var(--fg-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -227,7 +227,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 6px 8px 4px;
-    font-size: 10.5px;
+    font-size: 0.6562rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--fg-muted);

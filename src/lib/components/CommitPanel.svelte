@@ -99,7 +99,7 @@
     resize: vertical;
     min-height: 40px;
     font-family: var(--sans);
-    font-size: 12px;
+    font-size: 0.75rem;
     padding: 6px 8px;
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -121,7 +121,7 @@
     background: var(--bg);
     color: var(--fg);
     cursor: pointer;
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   button:hover:not(:disabled) {
     border-color: var(--accent);
@@ -164,7 +164,7 @@
   }
   .status {
     margin: 0;
-    font-size: 11px;
+    font-size: 0.6875rem;
     font-family: var(--mono);
     white-space: pre-wrap;
     word-break: break-word;

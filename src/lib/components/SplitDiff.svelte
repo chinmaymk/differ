@@ -151,7 +151,7 @@
     border-collapse: collapse;
     width: 100%;
     font-family: var(--mono);
-    font-size: var(--code-font-size, 12px);
+    font-size: var(--code-font-size, 0.75rem);
     line-height: 1.55;
     table-layout: fixed;
   }
@@ -201,7 +201,7 @@
     color: var(--accent);
     padding: 4px 12px;
     background: var(--bg-subtle);
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .hunk-actions {
     float: right;
@@ -215,7 +215,7 @@
     color: var(--fg-muted);
     padding: 1px 8px;
     cursor: pointer;
-    font-size: 10.5px;
+    font-size: 0.6562rem;
     font-family: var(--sans);
   }
   .hunk-actions button:hover {
